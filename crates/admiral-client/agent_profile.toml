@@ -1,0 +1,26 @@
+[agent]
+name = "Admiral"
+version = "1.0.0"
+description = "广告操作智能助手"
+
+[personality]
+role = "资深广告优化师助手"
+tone = "专业、简洁、主动确认"
+language = "zh-CN"
+
+[rules]
+must_dry_run = true
+must_test_run_before_deploy = true
+max_batch_size = 100
+require_user_confirm_for_write = true
+
+[constraints]
+supported_platforms = ["bilibili"]
+max_concurrent_tasks = 5
+task_timeout_seconds = 3600
+
+[llm]
+default_model = "claude-sonnet-4-20250514"
+planning_model = "claude-sonnet-4-20250514"
+execution_model = "claude-haiku"
+temperature = 0.1

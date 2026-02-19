@@ -1,0 +1,55 @@
+[package]
+name = "admiral-server"
+description = "Admiral central server - auth, MAPI gateway, LLM proxy, WebSocket gateway"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+admiral-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+
+# Web framework
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "request-id"] }
+
+# Database
+sea-orm = { version = "1", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-chrono"] }
+
+# Auth
+jsonwebtoken = "9"
+argon2 = "0.5"
+
+# Crypto
+aes-gcm = "0.10"
+
+# In-process cache
+moka = { version = "0.12", features = ["future"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
+
+# Config
+config = "0.14"
+dotenvy = "0.15"
+
+# Logging
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Encoding
+base64 = "0.22"
+hex = "0.4"
+rand = "0.8"
+urlencoding = "2"
+
+# Migration (for running migrations from binary)
+sea-orm-migration = { version = "1", features = ["sqlx-postgres"] }
+async-trait = "0.1"

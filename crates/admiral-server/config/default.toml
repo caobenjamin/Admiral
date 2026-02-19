@@ -1,0 +1,45 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+
+[database]
+max_connections = 10
+min_connections = 2
+
+[auth]
+access_token_ttl_seconds = 7200       # 2 hours
+refresh_token_ttl_seconds = 2592000   # 30 days
+login_rate_limit_attempts = 5
+login_rate_limit_window_seconds = 900  # 15 minutes
+login_lockout_seconds = 1800           # 30 minutes
+
+[license]
+check_interval_seconds = 600           # 10 minutes
+
+[websocket]
+heartbeat_interval_seconds = 30
+heartbeat_timeout_count = 2            # 2 missed = 60s → offline
+offline_threshold_seconds = 300        # 5 minutes → disable task execution
+reconnect_backoff_base_ms = 1000
+reconnect_backoff_max_ms = 30000
+
+[mapi]
+max_retries = 3
+retry_backoff_base_ms = 1000
+request_timeout_seconds = 30
+
+[llm]
+default_provider = "deepseek"
+request_timeout_seconds = 120
+max_tokens = 4096
+
+[bilibili]
+# APP_ID, APP_SECRET, CALLBACK_URL from env only
+
+[oauth]
+state_cache_ttl_seconds = 600
+token_refresh_interval_hours = 10
+
+[logging]
+level = "info"
+format = "json"

@@ -1,0 +1,25 @@
+[skill]
+id = "bili.account.balance"
+name = "查询B站广告账户余额"
+category = "mapi"
+platform = "bilibili"
+version = "1.0.0"
+
+[skill.description]
+short = "查询指定广告账户的余额信息"
+long = "调用 Bilibili Marketing API 查询账户余额、日预算消耗等财务信息。"
+
+[skill.risk]
+level = "low"
+requires_dry_run = false
+requires_test_run = false
+requires_user_confirm = false
+is_reversible = true
+
+[skill.input]
+required = ["account_id"]
+
+[skill.api]
+method = "GET"
+endpoint = "/v2/account/balance"
+rate_limit = "30/min"

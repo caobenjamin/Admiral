@@ -1,0 +1,26 @@
+[skill]
+id = "bili.report.data"
+name = "查询B站广告投放数据"
+category = "mapi"
+platform = "bilibili"
+version = "1.0.0"
+
+[skill.description]
+short = "查询广告投放效果数据"
+long = "调用 Bilibili Marketing API 查询展示、点击、消耗、转化等效果数据。"
+
+[skill.risk]
+level = "low"
+requires_dry_run = false
+requires_test_run = false
+requires_user_confirm = false
+is_reversible = true
+
+[skill.input]
+required = ["account_id", "start_date", "end_date", "group_by"]
+optional = ["campaign_ids", "adgroup_ids", "metrics"]
+
+[skill.api]
+method = "POST"
+endpoint = "/v2/report/data"
+rate_limit = "30/min"

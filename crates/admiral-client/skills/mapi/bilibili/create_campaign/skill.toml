@@ -1,0 +1,34 @@
+[skill]
+id = "bili.campaign.create"
+name = "创建B站广告计划"
+category = "mapi"
+platform = "bilibili"
+version = "1.0.0"
+
+[skill.description]
+short = "在指定B站广告账户下创建新的广告计划"
+long = """
+此 Skill 调用 Bilibili Marketing API 创建广告计划。
+支持设置计划名称、预算、出价策略、投放时段等。
+"""
+
+[skill.risk]
+level = "high"
+requires_dry_run = true
+requires_test_run = true
+requires_user_confirm = true
+is_reversible = false
+
+[skill.input]
+required = ["account_id", "campaign_name", "budget", "bid_type"]
+optional = ["schedule", "targeting", "delivery_speed"]
+
+[skill.api]
+method = "POST"
+endpoint = "/v2/campaign/create"
+rate_limit = "10/min"
+
+[skill.validation]
+budget_min = 100
+budget_max = 999999
+campaign_name_max_length = 50

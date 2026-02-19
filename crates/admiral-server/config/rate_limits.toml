@@ -1,0 +1,101 @@
+# Admiral MAPI Rate Limiting Configuration
+# Hot-reloadable via Admin API: PUT /api/v1/admin/rate-limits
+
+[global]
+max_requests_per_minute = 600
+
+[defaults]
+user_rpm = 60
+account_rpm = 30
+endpoint_rpm = 20
+endpoint_qps = 5
+
+# ============================================================
+# Bilibili MAPI per-endpoint rate limits
+# ============================================================
+
+[platforms.bilibili]
+
+[platforms.bilibili.endpoints."/v2/account/list"]
+endpoint_rpm = 30
+endpoint_qps = 5
+category = "read"
+description = "获取账户列表"
+
+[platforms.bilibili.endpoints."/v2/account/balance"]
+endpoint_rpm = 30
+endpoint_qps = 5
+category = "read"
+description = "查询账户余额"
+
+[platforms.bilibili.endpoints."/v2/campaign/list"]
+endpoint_rpm = 60
+endpoint_qps = 10
+category = "read"
+description = "查询计划列表"
+
+[platforms.bilibili.endpoints."/v2/campaign/create"]
+endpoint_rpm = 10
+endpoint_qps = 2
+category = "write"
+description = "创建广告计划"
+cooldown_ms = 500
+
+[platforms.bilibili.endpoints."/v2/campaign/update"]
+endpoint_rpm = 10
+endpoint_qps = 2
+category = "write"
+description = "修改广告计划"
+cooldown_ms = 500
+
+[platforms.bilibili.endpoints."/v2/adgroup/list"]
+endpoint_rpm = 60
+endpoint_qps = 10
+category = "read"
+description = "查询单元列表"
+
+[platforms.bilibili.endpoints."/v2/adgroup/create"]
+endpoint_rpm = 10
+endpoint_qps = 2
+category = "write"
+description = "创建广告单元"
+cooldown_ms = 500
+
+[platforms.bilibili.endpoints."/v2/adgroup/update"]
+endpoint_rpm = 10
+endpoint_qps = 2
+category = "write"
+description = "修改广告单元"
+cooldown_ms = 500
+
+[platforms.bilibili.endpoints."/v2/creative/list"]
+endpoint_rpm = 60
+endpoint_qps = 10
+category = "read"
+description = "查询创意列表"
+
+[platforms.bilibili.endpoints."/v2/creative/create"]
+endpoint_rpm = 5
+endpoint_qps = 1
+category = "write"
+description = "创建广告创意"
+cooldown_ms = 1000
+
+[platforms.bilibili.endpoints."/v2/creative/update"]
+endpoint_rpm = 5
+endpoint_qps = 1
+category = "write"
+description = "修改广告创意"
+cooldown_ms = 1000
+
+[platforms.bilibili.endpoints."/v2/report/query"]
+endpoint_rpm = 30
+endpoint_qps = 5
+category = "read"
+description = "查询数据报表"
+
+[platforms.bilibili.endpoints."/v2/report/data"]
+endpoint_rpm = 30
+endpoint_qps = 5
+category = "read"
+description = "查询投放效果数据"

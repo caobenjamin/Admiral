@@ -1,0 +1,47 @@
+[package]
+name = "admiral-client"
+description = "Admiral desktop client - Tauri 2 based ad automation agent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+admiral-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+
+# Tauri
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+open = "5"
+
+# Local database
+# rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Network
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+# tokio-tungstenite = "0.24"
+
+# Crypto (for credential file encryption)
+# aes-gcm = "0.10"
+# zeroize = "1"
+
+# Cron scheduler
+# cron = "0.13"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[lib]
+name = "admiral_client_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "admiral-client"
+path = "src/main.rs"

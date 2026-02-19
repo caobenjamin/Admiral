@@ -1,0 +1,26 @@
+[skill]
+id = "bili.adgroup.list"
+name = "查询B站广告单元列表"
+category = "mapi"
+platform = "bilibili"
+version = "1.0.0"
+
+[skill.description]
+short = "查询指定计划下的广告单元列表"
+long = "调用 Bilibili Marketing API 查询广告单元，支持按计划ID、状态等筛选。"
+
+[skill.risk]
+level = "low"
+requires_dry_run = false
+requires_test_run = false
+requires_user_confirm = false
+is_reversible = true
+
+[skill.input]
+required = ["account_id"]
+optional = ["campaign_id", "status", "page", "page_size"]
+
+[skill.api]
+method = "GET"
+endpoint = "/v2/adgroup/list"
+rate_limit = "60/min"

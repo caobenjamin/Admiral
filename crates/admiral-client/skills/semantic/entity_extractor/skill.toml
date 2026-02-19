@@ -1,0 +1,19 @@
+[skill]
+id = "semantic.entity_extract"
+name = "实体提取"
+category = "semantic"
+version = "1.0.0"
+
+[skill.description]
+short = "从用户输入中提取结构化实体信息"
+long = """
+从自然语言中提取广告操作相关的实体：
+账户名、计划名、预算金额、出价、时间范围等。
+"""
+
+[skill.risk]
+level = "low"
+requires_dry_run = false
+requires_test_run = false
+requires_user_confirm = false
+is_reversible = true

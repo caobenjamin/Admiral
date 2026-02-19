@@ -1,0 +1,26 @@
+[skill]
+id = "bili.creative.create"
+name = "创建B站广告创意"
+category = "mapi"
+platform = "bilibili"
+version = "1.0.0"
+
+[skill.description]
+short = "在指定广告单元下创建广告创意"
+long = "调用 Bilibili Marketing API 创建广告创意，需指定素材、标题、落地页等。"
+
+[skill.risk]
+level = "high"
+requires_dry_run = true
+requires_test_run = true
+requires_user_confirm = true
+is_reversible = false
+
+[skill.input]
+required = ["account_id", "adgroup_id", "title", "landing_page"]
+optional = ["image_url", "video_id", "description"]
+
+[skill.api]
+method = "POST"
+endpoint = "/v2/creative/create"
+rate_limit = "5/min"

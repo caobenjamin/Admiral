@@ -1,0 +1,26 @@
+[skill]
+id = "bili.creative.list"
+name = "查询B站广告创意列表"
+category = "mapi"
+platform = "bilibili"
+version = "1.0.0"
+
+[skill.description]
+short = "查询指定单元下的广告创意列表"
+long = "调用 Bilibili Marketing API 查询广告创意信息。"
+
+[skill.risk]
+level = "low"
+requires_dry_run = false
+requires_test_run = false
+requires_user_confirm = false
+is_reversible = true
+
+[skill.input]
+required = ["account_id"]
+optional = ["adgroup_id", "status", "page", "page_size"]
+
+[skill.api]
+method = "GET"
+endpoint = "/v2/creative/list"
+rate_limit = "60/min"

@@ -1,0 +1,20 @@
+[skill]
+id = "tools.email_send"
+name = "发送邮件"
+category = "tools"
+version = "1.0.0"
+
+[skill.description]
+short = "发送电子邮件通知"
+long = "向指定收件人发送邮件，支持附件。用于报表发送、告警通知等场景。"
+
+[skill.risk]
+level = "medium"
+requires_dry_run = false
+requires_test_run = false
+requires_user_confirm = true
+is_reversible = false
+
+[skill.input]
+required = ["to", "subject", "body"]
+optional = ["cc", "attachments"]

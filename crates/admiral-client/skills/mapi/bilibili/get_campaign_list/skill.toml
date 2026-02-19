@@ -1,0 +1,26 @@
+[skill]
+id = "bili.campaign.list"
+name = "查询B站广告计划列表"
+category = "mapi"
+platform = "bilibili"
+version = "1.0.0"
+
+[skill.description]
+short = "查询指定账户下的广告计划列表"
+long = "调用 Bilibili Marketing API 查询广告计划，支持按状态、名称等筛选。"
+
+[skill.risk]
+level = "low"
+requires_dry_run = false
+requires_test_run = false
+requires_user_confirm = false
+is_reversible = true
+
+[skill.input]
+required = ["account_id"]
+optional = ["status", "name_filter", "page", "page_size"]
+
+[skill.api]
+method = "GET"
+endpoint = "/v2/campaign/list"
+rate_limit = "60/min"

@@ -1,0 +1,26 @@
+[skill]
+id = "bili.report.query"
+name = "查询B站广告数据报表"
+category = "mapi"
+platform = "bilibili"
+version = "1.0.0"
+
+[skill.description]
+short = "查询广告投放数据报表"
+long = "调用 Bilibili Marketing API 查询广告投放数据，支持按日期、维度汇总。"
+
+[skill.risk]
+level = "low"
+requires_dry_run = false
+requires_test_run = false
+requires_user_confirm = false
+is_reversible = true
+
+[skill.input]
+required = ["account_id", "start_date", "end_date"]
+optional = ["dimensions", "metrics", "filters"]
+
+[skill.api]
+method = "POST"
+endpoint = "/v2/report/query"
+rate_limit = "30/min"

@@ -1,0 +1,26 @@
+[skill]
+id = "bili.adgroup.create"
+name = "创建B站广告单元"
+category = "mapi"
+platform = "bilibili"
+version = "1.0.0"
+
+[skill.description]
+short = "在指定广告计划下创建广告单元"
+long = "调用 Bilibili Marketing API 创建广告单元，需指定所属计划、定向、出价等。"
+
+[skill.risk]
+level = "high"
+requires_dry_run = true
+requires_test_run = true
+requires_user_confirm = true
+is_reversible = false
+
+[skill.input]
+required = ["account_id", "campaign_id", "adgroup_name", "bid"]
+optional = ["targeting", "schedule"]
+
+[skill.api]
+method = "POST"
+endpoint = "/v2/adgroup/create"
+rate_limit = "10/min"

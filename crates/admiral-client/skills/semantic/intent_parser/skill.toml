@@ -1,0 +1,19 @@
+[skill]
+id = "semantic.intent_parse"
+name = "意图解析"
+category = "semantic"
+version = "1.0.0"
+
+[skill.description]
+short = "解析用户自然语言输入，识别操作意图"
+long = """
+分析用户输入的自然语言，识别其广告操作意图。
+支持识别：创建、修改、查询、监控、导出等操作类型。
+"""
+
+[skill.risk]
+level = "low"
+requires_dry_run = false
+requires_test_run = false
+requires_user_confirm = false
+is_reversible = true

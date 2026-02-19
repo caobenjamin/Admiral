@@ -1,0 +1,20 @@
+[skill]
+id = "tools.excel_export"
+name = "导出Excel"
+category = "tools"
+version = "1.0.0"
+
+[skill.description]
+short = "将数据导出为Excel文件"
+long = "将查询结果、报表数据等导出为 .xlsx 格式的 Excel 文件。"
+
+[skill.risk]
+level = "low"
+requires_dry_run = false
+requires_test_run = false
+requires_user_confirm = false
+is_reversible = true
+
+[skill.input]
+required = ["data", "filename"]
+optional = ["sheet_name", "format"]
