@@ -30,17 +30,51 @@ const router = createBrowserRouter([
   { path: "*", element: <Navigate to="/" replace /> },
 ]);
 
+const SETTING_CARDS = [
+  { to: "/settings/platforms", icon: "📺", title: "平台授权", desc: "授权管理" },
+  { to: "/settings/preferences", icon: "🎨", title: "偏好", desc: "主题语言" },
+  { to: "/settings/mapi", icon: "🔌", title: "MAPI", desc: "调试工具" },
+  { to: "/settings/llm", icon: "🤖", title: "LLM", desc: "调试工具" },
+  { to: "/admin", icon: "⚙", title: "管理", desc: "仅管理员" },
+];
+
 function SettingsPage() {
   return (
-    <div className="p-4 space-y-4">
-      <h2 className="text-lg font-semibold" style={{ color: "var(--admiral-text-primary)" }}>设置</h2>
-      <nav className="flex flex-col gap-2">
-        <Link to="/settings/platforms" className="text-primary hover:underline">平台授权（B 站）</Link>
-        <Link to="/settings/preferences" className="text-primary hover:underline">偏好设置</Link>
-        <Link to="/settings/mapi" className="text-primary hover:underline">MAPI 调试</Link>
-        <Link to="/settings/llm" className="text-primary hover:underline">LLM 对话</Link>
-        <Link to="/admin" className="text-primary hover:underline">管理（仅管理员）</Link>
-      </nav>
+    <div style={{ padding: 24, maxWidth: 720 }}>
+      <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--admiral-text-primary)", marginBottom: 24 }}>
+        ⚙ 设置
+      </h2>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+          gap: 16,
+        }}
+      >
+        {SETTING_CARDS.map((c) => (
+          <Link
+            key={c.to}
+            to={c.to}
+            className="settings-card"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              padding: 16,
+              borderRadius: "var(--admiral-radius-card)",
+              border: "1px solid var(--admiral-border)",
+              backgroundColor: "var(--admiral-card)",
+              boxShadow: "var(--admiral-shadow-card)",
+              textDecoration: "none",
+              color: "var(--admiral-text-primary)",
+              transition: "transform 0.2s ease, box-shadow 0.2s ease",
+            }}
+          >
+            <span style={{ fontSize: 24, marginBottom: 8 }}>{c.icon}</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>{c.title}</span>
+            <span style={{ fontSize: 12, color: "var(--admiral-text-secondary)", marginTop: 4 }}>{c.desc}</span>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

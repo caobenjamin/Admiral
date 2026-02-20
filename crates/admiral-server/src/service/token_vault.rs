@@ -36,6 +36,8 @@ impl TokenVault {
         refresh_token: &str,
         expires_at: DateTime<Utc>,
         refresh_expires_at: Option<DateTime<Utc>>,
+        bid: Option<i64>,
+        user_name: Option<String>,
     ) -> Result<Uuid> {
         let (access_enc, nonce_access) = crypto::encrypt(access_token.as_bytes(), &self.key)
             .map_err(|e| AppError::Internal(anyhow::anyhow!("encrypt: {}", e)))?;
@@ -46,7 +48,7 @@ impl TokenVault {
 
         let id = Uuid::new_v4();
         let now = Utc::now();
-        let active = oauth_token::ActiveModel {
+        let mut active = oauth_token::ActiveModel {
             id: Set(id),
             user_id: Set(user_id),
             platform: Set(platform.to_string()),
@@ -59,6 +61,8 @@ impl TokenVault {
             updated_at: Set(now.into()),
             ..Default::default()
         };
+        active.bid = Set(bid);
+        active.user_name = Set(user_name);
         active.insert(&self.db).await?;
         Ok(id)
     }
@@ -132,6 +136,8 @@ impl TokenVault {
                 id: r.id,
                 platform: r.platform,
                 created_at: r.created_at.to_rfc3339(),
+                bid: r.bid,
+                user_name: r.user_name,
             })
             .collect())
     }

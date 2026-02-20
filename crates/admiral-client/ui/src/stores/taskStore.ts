@@ -29,6 +29,7 @@ interface TaskState {
   tasks: TaskMeta[];
   setTasks: (tasks: TaskMeta[]) => void;
   fetchTasks: () => Promise<void>;
+  createTask: (params: { name: string; type: "instant" | "scheduled" }) => Promise<TaskMeta>;
 }
 
 // 占位：暂无后端接口时返回 mock 数据，后续接真实 API
@@ -40,11 +41,22 @@ async function fetchTasksFromApi(): Promise<TaskMeta[]> {
   ];
 }
 
-export const useTaskStore = create<TaskState>((set) => ({
+export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: [],
   setTasks: (tasks) => set({ tasks }),
   fetchTasks: async () => {
     const list = await fetchTasksFromApi();
     set({ tasks: list });
+  },
+  createTask: async (params) => {
+    const newTask: TaskMeta = {
+      id: `task-${Date.now()}`,
+      name: params.name,
+      status: "draft",
+      type: params.type,
+      updated_at: new Date().toISOString(),
+    };
+    set({ tasks: [...get().tasks, newTask] });
+    return newTask;
   },
 }));

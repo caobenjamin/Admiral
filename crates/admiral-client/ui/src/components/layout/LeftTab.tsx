@@ -64,7 +64,7 @@ export function LeftTab() {
     navigate("/settings/platforms");
   };
 
-  const baseBtnStyle: React.CSSProperties = {
+  const baseBtnStyle = (active: boolean, disabled?: boolean): React.CSSProperties => ({
     display: "flex",
     alignItems: "center",
     gap: 12,
@@ -74,14 +74,19 @@ export function LeftTab() {
     fontSize: 14,
     border: "none",
     borderRadius: 8,
-    cursor: "pointer",
-    backgroundColor: "transparent",
-    color: "var(--admiral-text-primary)",
+    cursor: disabled ? "not-allowed" : "pointer",
+    backgroundColor: active ? "rgba(64, 158, 255, 0.1)" : "transparent",
+    color: active ? "var(--color-primary)" : "var(--admiral-text-primary)",
     textDecoration: "none",
-  };
+    position: "relative",
+    ...(active ? { borderLeft: "3px solid var(--color-primary)", paddingLeft: 9 } : {}),
+    ...(disabled ? { opacity: 0.6 } : {}),
+  });
 
   return (
     <aside
+      role="navigation"
+      aria-label="主导航"
       style={{
         width,
         flexShrink: 0,
@@ -104,18 +109,14 @@ export function LeftTab() {
         <button
           type="button"
           onClick={handleMediaClick}
-          style={{
-            ...baseBtnStyle,
-            marginTop: 0,
-            backgroundColor: activeTab === "media" ? "rgba(64, 158, 255, 0.1)" : undefined,
-            color: activeTab === "media" ? "var(--color-primary)" : undefined,
-          }}
-          title={leftTabCollapsed ? "媒体账户" : undefined}
+          style={baseBtnStyle(activeTab === "media")}
+          title={leftTabCollapsed ? "授权管理" : undefined}
+          className={`left-tab-item ${activeTab === "media" ? "left-tab-active" : ""}`}
         >
           <MediaIcon />
           {!leftTabCollapsed && (
             <div style={{ minWidth: 0, flex: 1 }}>
-              <span style={{ display: "block", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>媒体账户</span>
+              <span style={{ display: "block", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>授权管理</span>
               <span
                 style={{
                   display: "block",
@@ -126,7 +127,7 @@ export function LeftTab() {
                   color: biliAuthorized ? "var(--color-success)" : "var(--color-warning)",
                 }}
               >
-                B站 {biliAuthorized ? "已授权" : "未授权"}
+                B站 {biliAuthorized ? "已授权 ✓" : "未授权"}
               </span>
             </div>
           )}
@@ -135,13 +136,9 @@ export function LeftTab() {
         <Link
           to="/"
           onClick={() => setActiveTab("tasks")}
-          style={{
-            ...baseBtnStyle,
-            marginTop: 4,
-            backgroundColor: activeTab === "tasks" ? "rgba(64, 158, 255, 0.1)" : undefined,
-            color: activeTab === "tasks" ? "var(--color-primary)" : undefined,
-          }}
+          style={{ ...baseBtnStyle(activeTab === "tasks"), marginTop: 4 }}
           title={leftTabCollapsed ? "任务" : undefined}
+          className={`left-tab-item ${activeTab === "tasks" ? "left-tab-active" : ""}`}
         >
           <TasksIcon />
           {!leftTabCollapsed && <span style={{ fontWeight: 500 }}>任务</span>}
@@ -151,14 +148,9 @@ export function LeftTab() {
           type="button"
           onClick={() => setActiveTab("skills")}
           disabled
-          style={{
-            ...baseBtnStyle,
-            marginTop: 4,
-            opacity: 0.6,
-            cursor: "not-allowed",
-            color: "var(--admiral-text-placeholder)",
-          }}
+          style={{ ...baseBtnStyle(false, true), marginTop: 4, color: "var(--admiral-text-placeholder)" }}
           title={leftTabCollapsed ? "能力栏（Phase 5）" : undefined}
+          className="left-tab-item"
         >
           <SkillsIcon />
           {!leftTabCollapsed && <span style={{ fontWeight: 500 }}>能力栏</span>}

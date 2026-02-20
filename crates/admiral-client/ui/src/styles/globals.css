@@ -40,3 +40,106 @@ body {
   min-height: 0;
   overflow: hidden;
 }
+
+/* 进度条运行中条纹流动动画 */
+@keyframes task-progress-stripe {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 20px 0;
+  }
+}
+
+/* LeftTab 未选中项 hover */
+/* 登录失败抖动 */
+@keyframes login-shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+/* 设置卡片 hover */
+/* Header 下拉菜单进入动效 */
+@keyframes header-dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.settings-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.login-shake {
+  animation: login-shake 0.5s ease-in-out;
+}
+
+.left-tab-item:not(:disabled):not(.left-tab-active):hover {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+
+/* 分栏拖拽手柄：透明，hover 显示灰色 */
+.resize-handle {
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.resize-handle:hover {
+  background: rgba(220, 223, 230, 0.5);
+}
+
+/* 时间线运行中节点脉冲动画 */
+@keyframes timeline-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.8;
+  }
+}
+.timeline-node-pulse {
+  animation: timeline-pulse 2s ease-in-out infinite;
+}
+
+.task-progress-animated {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.15) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0.15) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 20px 20px;
+  animation: task-progress-stripe 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

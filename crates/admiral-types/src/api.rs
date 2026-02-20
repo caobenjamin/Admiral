@@ -69,6 +69,10 @@ pub struct TokenMeta {
     pub id: Uuid,
     pub platform: String,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bid: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_name: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

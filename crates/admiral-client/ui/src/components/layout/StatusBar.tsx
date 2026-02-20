@@ -15,6 +15,12 @@ export function StatusBar() {
 
   const days = license?.expires_at ? licenseRemainingDays(license.expires_at) : null;
   const statusLabel = connectionStatus === "online" ? "在线" : connectionStatus === "connecting" ? "连接中" : "离线";
+  const dotColor =
+    connectionStatus === "online"
+      ? "var(--color-success)"
+      : connectionStatus === "connecting"
+        ? "var(--color-warning)"
+        : "#9CA3AF";
 
   return (
     <footer
@@ -34,12 +40,24 @@ export function StatusBar() {
       }}
     >
       <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 16 }}>
-        <span>{statusLabel}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              flexShrink: 0,
+              backgroundColor: dotColor,
+            }}
+            aria-hidden
+          />
+          {statusLabel}
+        </span>
         {license?.is_active && days !== null && (
           <span>License: 剩余{days}天</span>
         )}
       </div>
-      <span>v1.0.0</span>
+      <span>Admiral v1.0.0</span>
     </footer>
   );
 }

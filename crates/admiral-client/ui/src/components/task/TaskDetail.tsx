@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore, type TaskStatus } from "@/stores/taskStore";
 import { TaskTimeline } from "./TaskTimeline";
@@ -33,15 +34,34 @@ export function TaskDetail() {
   if (!task) {
     return (
       <div
-        className="rounded-lg border p-6 text-center"
+        className="rounded-lg border p-8 flex flex-col items-center justify-center text-center min-h-[200px]"
         style={{ borderColor: "var(--admiral-border)", backgroundColor: "var(--admiral-card)", borderRadius: "var(--admiral-radius-card)" }}
       >
-        <p className="text-sm text-[var(--admiral-text-placeholder)]">在左侧选择任务，或点击「新建任务」创建</p>
+        <span className="text-2xl mb-4" aria-hidden>📋</span>
+        <p className="text-sm text-[var(--admiral-text-secondary)] mb-4">
+          在左侧选择任务，或创建新任务
+        </p>
+        <Link
+          to="/task/new"
+          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white rounded-md bg-[var(--color-primary)] hover:opacity-90 transition-opacity"
+          style={{ borderRadius: "var(--admiral-radius-button)" }}
+        >
+          <span>+</span>
+          <span>新建任务</span>
+        </Link>
       </div>
     );
   }
 
-  const progressPercent = task.status === "succeeded" ? 100 : task.status === "running" ? 60 : 0;
+  const showProgress = ["running", "dry_running", "test_run_running", "succeeded", "failed"].includes(task.status);
+  const progressPercent =
+    task.status === "succeeded"
+      ? 100
+      : task.status === "failed"
+        ? 60
+        : ["running", "dry_running", "test_run_running"].includes(task.status)
+          ? 60
+          : 0;
   const showConfirmActions =
     task.status === "dry_run_passed" || task.status === "test_run_passed";
 
@@ -58,21 +78,39 @@ export function TaskDetail() {
       style={{ borderColor: "var(--admiral-border)", backgroundColor: "var(--admiral-card)", borderRadius: "var(--admiral-radius-card)" }}
     >
       <div>
-        <h3 className="text-base font-semibold text-[var(--admiral-text-primary)]">{task.name || "未命名任务"}</h3>
+        <h2 className="text-base font-semibold text-[var(--admiral-text-primary)]" style={{ fontSize: 16, fontWeight: 600 }}>
+          {task.name || "未命名任务"}
+        </h2>
         <p className="text-sm text-[var(--admiral-text-secondary)] mt-0.5">
-          类型: {typeLabel(task.type)} · 状态: {statusLabel(task.status)}
+          {typeLabel(task.type)} · {statusLabel(task.status)}
         </p>
       </div>
-      {progressPercent > 0 && (
+      {showProgress && progressPercent > 0 && (
         <div>
-          <div className="flex justify-between text-xs text-[var(--admiral-text-secondary)] mb-1">
-            <span>进度</span>
-            <span>{progressPercent}%</span>
+          <div className="flex justify-between items-center gap-2 mb-1">
+            <span className="text-xs text-[var(--admiral-text-secondary)]">进度</span>
+            <span className="text-xs text-[var(--admiral-text-placeholder)]">{progressPercent}%</span>
           </div>
-          <div className="h-2 rounded-full overflow-hidden bg-[var(--admiral-border)]">
+          <div
+            className="overflow-hidden rounded"
+            style={{ height: 8, borderRadius: 4, backgroundColor: "var(--admiral-border)" }}
+            role="progressbar"
+            aria-valuenow={progressPercent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
             <div
-              className="h-full bg-primary rounded-full transition-all duration-300"
-              style={{ width: `${progressPercent}%` }}
+              className={`h-full rounded transition-all duration-300 ${task.status === "running" ? "task-progress-animated" : ""}`}
+              style={{
+                width: `${progressPercent}%`,
+                borderRadius: 4,
+                backgroundColor:
+                  task.status === "failed"
+                    ? "var(--color-danger)"
+                    : task.status === "succeeded"
+                      ? "var(--color-success)"
+                      : "var(--color-primary)",
+              }}
             />
           </div>
         </div>

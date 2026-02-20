@@ -48,12 +48,17 @@ pub struct OAuthConfig {
     pub state_cache_ttl_seconds: u64,
     #[serde(default = "default_token_refresh_hours")]
     pub token_refresh_interval_hours: u64,
+    #[serde(default = "default_max_accounts_per_user")]
+    pub default_max_accounts_per_user: u32,
 }
 
 fn default_state_cache_ttl() -> u64 {
     600
 }
 fn default_token_refresh_hours() -> u64 {
+    10
+}
+fn default_max_accounts_per_user() -> u32 {
     10
 }
 

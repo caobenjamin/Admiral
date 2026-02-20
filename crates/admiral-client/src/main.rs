@@ -22,6 +22,7 @@ fn main() {
             tauri_bridge::oauth_accounts_list,
             tauri_bridge::oauth_bind_accounts,
             tauri_bridge::oauth_delete_session,
+            tauri_bridge::oauth_unbind_account,
             tauri_bridge::mapi_proxy,
             tauri_bridge::llm_chat,
             tauri_bridge::open_url,

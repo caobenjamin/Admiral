@@ -108,6 +108,16 @@ pub async fn oauth_delete_session(
         .map_err(err_string)
 }
 
+#[tauri::command]
+pub async fn oauth_unbind_account(
+    state: tauri::State<'_, AppState>,
+    account_id: i64,
+) -> Result<(), String> {
+    crate::commands::oauth::oauth_unbind_account(&state.auth, account_id)
+        .await
+        .map_err(err_string)
+}
+
 // ---------- MAPI ----------
 
 #[tauri::command]

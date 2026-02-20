@@ -12,6 +12,9 @@ pub type Result<T, E = AppError> = std::result::Result<T, E>;
 
 #[derive(Error, Debug)]
 pub enum AppError {
+    #[error("account limit exceeded: max={0}")]
+    AccountLimitExceeded(u32),
+
     #[error("not found: {0}")]
     NotFound(String),
 
@@ -56,28 +59,42 @@ pub enum AppError {
 struct ErrorBody {
     code: String,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_accounts: Option<u32>,
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let (status, code) = match &self {
-            AppError::NotFound(_) => (StatusCode::NOT_FOUND, "NOT_FOUND"),
-            AppError::BadRequest(_) => (StatusCode::BAD_REQUEST, "BAD_REQUEST"),
-            AppError::Unauthorized(_) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED"),
-            AppError::Forbidden(_) => (StatusCode::FORBIDDEN, "FORBIDDEN"),
-            AppError::Conflict(_) => (StatusCode::CONFLICT, "CONFLICT"),
-            AppError::InviteInvalid | AppError::EmailExists | AppError::InvalidCredentials => {
-                (StatusCode::BAD_REQUEST, "BAD_REQUEST")
+        let (status, code, max_accounts) = match &self {
+            AppError::AccountLimitExceeded(max) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorBody {
+                        code: "ACCOUNT_LIMIT_EXCEEDED".to_string(),
+                        message: format!("已达账户数量上限（{}），请删除部分账户后再添加。", max),
+                        max_accounts: Some(*max),
+                    }),
+                )
+                    .into_response()
             }
-            AppError::InvalidToken => (StatusCode::UNAUTHORIZED, "INVALID_TOKEN"),
-            AppError::Upstream(_) => (StatusCode::BAD_GATEWAY, "UPSTREAM_ERROR"),
+            AppError::NotFound(_) => (StatusCode::NOT_FOUND, "NOT_FOUND", None),
+            AppError::BadRequest(_) => (StatusCode::BAD_REQUEST, "BAD_REQUEST", None),
+            AppError::Unauthorized(_) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", None),
+            AppError::Forbidden(_) => (StatusCode::FORBIDDEN, "FORBIDDEN", None),
+            AppError::Conflict(_) => (StatusCode::CONFLICT, "CONFLICT", None),
+            AppError::InviteInvalid | AppError::EmailExists | AppError::InvalidCredentials => {
+                (StatusCode::BAD_REQUEST, "BAD_REQUEST", None)
+            }
+            AppError::InvalidToken => (StatusCode::UNAUTHORIZED, "INVALID_TOKEN", None),
+            AppError::Upstream(_) => (StatusCode::BAD_GATEWAY, "UPSTREAM_ERROR", None),
             AppError::Internal(_) | AppError::Config(_) | AppError::Db(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR")
+                (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", None)
             }
         };
         let body = ErrorBody {
             code: code.to_string(),
             message: self.to_string(),
+            max_accounts,
         };
         (status, Json(body)).into_response()
     }

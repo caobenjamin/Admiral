@@ -217,6 +217,17 @@ impl ApiClient {
         Ok(())
     }
 
+    pub async fn oauth_unbind_account(
+        &self,
+        access_token: &str,
+        account_id: i64,
+    ) -> Result<(), ApiError> {
+        let path = format!("/api/v1/oauth/bilibili/bindings/{}", account_id);
+        self.request_with_token(reqwest::Method::DELETE, &path, Some(access_token), None)
+            .await?;
+        Ok(())
+    }
+
     // ---------- MAPI ----------
 
     pub async fn mapi_proxy(

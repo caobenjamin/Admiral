@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { useAuth } from "@/hooks/useAuth";
 import { TaskDetail } from "@/components/task/TaskDetail";
-import { ChatPanel } from "@/components/chat/ChatPanel";
-import type { ChatMessage } from "@/components/chat/MessageBubble";
+import { ChatInput } from "@/components/chat/ChatInput";
+import { MessageBubble, type ChatMessage } from "@/components/chat/MessageBubble";
 
 export function HomePage() {
   const user = useAuthStore((s) => s.user);
@@ -45,23 +45,50 @@ export function HomePage() {
         minHeight: 0,
         overflow: "hidden",
         padding: 16,
-        gap: 16,
+        gap: 0,
       }}
     >
-      <div style={{ flexShrink: 0, minHeight: 0, overflow: "auto" }}>
-        <TaskDetail />
-      </div>
+      {/* 展示区域（可滚动）：任务详情、执行时间线、Agent 对话 */}
       <div
         style={{
           flex: 1,
-          minHeight: 200,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
+          minHeight: 0,
+          overflow: "auto",
+          paddingBottom: 16,
         }}
       >
-        <ChatPanel
-          messages={messages}
+        <TaskDetail />
+        <div
+          className="mt-4 rounded-lg border p-4"
+          style={{
+            borderColor: "var(--admiral-border)",
+            backgroundColor: "var(--admiral-card)",
+            borderRadius: "var(--admiral-radius-card)",
+          }}
+        >
+          <h4 className="text-sm font-medium text-[var(--admiral-text-primary)] mb-3">Agent 对话</h4>
+          {messages.length > 0 ? (
+            <div className="space-y-2">
+              {messages.map((m) => (
+                <MessageBubble key={m.id} message={m} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--admiral-text-placeholder)] py-4">
+              在下方输入自然语言描述任务，或与 Agent 对话
+            </p>
+          )}
+        </div>
+      </div>
+      {/* 输入区域（固定底部） */}
+      <div
+        style={{
+          flexShrink: 0,
+          borderTop: "1px solid var(--admiral-border)",
+          paddingTop: 16,
+        }}
+      >
+        <ChatInput
           onSend={handleSend}
           placeholder="输入指令或描述任务…"
         />

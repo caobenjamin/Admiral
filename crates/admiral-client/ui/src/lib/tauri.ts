@@ -69,6 +69,10 @@ export async function oauthDeleteSession(sessionId: string): Promise<void> {
   return invoke("oauth_delete_session", { sessionId });
 }
 
+export async function oauthUnbindAccount(accountId: number): Promise<void> {
+  return invoke("oauth_unbind_account", { accountId });
+}
+
 export async function mapiProxy(req: {
   account_id: number;
   method: string;

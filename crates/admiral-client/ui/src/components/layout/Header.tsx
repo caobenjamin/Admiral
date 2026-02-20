@@ -93,8 +93,15 @@ export function Header() {
       if (ref.current && !ref.current.contains(e.target as Node))
         setAccountOpen(false);
     };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAccountOpen(false);
+    };
     document.addEventListener("click", onOutside);
-    return () => document.removeEventListener("click", onOutside);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("click", onOutside);
+      document.removeEventListener("keydown", onEsc);
+    };
   }, []);
 
   return (
@@ -190,6 +197,8 @@ export function Header() {
               </button>
               {accountOpen && (
                 <div
+                  role="menu"
+                  className="header-dropdown"
                   style={{
                     position: "absolute",
                     right: 0,
@@ -202,6 +211,7 @@ export function Header() {
                     border: "1px solid var(--admiral-border)",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
                     zIndex: 10,
+                    animation: "header-dropdown-in 0.15s ease-out",
                   }}
                 >
                   <div

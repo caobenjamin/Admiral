@@ -48,23 +48,47 @@ function TaskListItem({
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full text-left px-3 py-2.5 rounded-lg flex flex-col gap-0.5 transition-colors ${
-        selected ? "bg-primary/10 text-primary" : "hover:bg-[var(--admiral-bg)] text-[var(--admiral-text-primary)]"
+      role="option"
+      aria-selected={selected}
+      className={`block w-full text-left px-3 py-2.5 rounded-lg flex flex-col gap-1.5 transition-all shrink-0 ${
+        selected
+          ? "bg-[rgba(64,158,255,0.1)] text-[var(--color-primary)]"
+          : "border border-[var(--admiral-border)] bg-[var(--admiral-card)] hover:bg-[rgba(0,0,0,0.04)] hover:border-[var(--admiral-text-placeholder)]/50 text-[var(--admiral-text-primary)]"
       }`}
-      style={{ borderRadius: "var(--admiral-radius-card)" }}
+      style={{
+        borderRadius: "var(--admiral-radius-card)",
+        boxShadow: selected ? "0 1px 3px rgba(0,0,0,0.06)" : undefined,
+        ...(selected ? { borderLeft: "3px solid var(--color-primary)" } : {}),
+      }}
     >
       <div className="flex items-center gap-2">
         <span
           className={`h-2 w-2 shrink-0 rounded-full ${taskStatusDot(task.status)}`}
+          style={{ borderRadius: "50%" }}
           aria-hidden
         />
         <span className="flex-1 min-w-0 truncate text-sm font-medium" title={task.name}>
           {task.name || "未命名任务"}
         </span>
       </div>
-      <div className="flex items-center justify-between pl-4 text-xs text-[var(--admiral-text-secondary)]">
+      <div className="flex items-center gap-1 pl-4 text-xs text-[var(--admiral-text-secondary)]">
         <span>{taskStatusLabel(task.status)}</span>
-        <span>{lastRunResultLabel(task.last_run_result)}</span>
+        {task.last_run_result && (
+          <>
+            <span>·</span>
+            <span
+              className={
+                task.last_run_result === "success"
+                  ? "text-[var(--color-success)]"
+                  : task.last_run_result === "failed"
+                    ? "text-[var(--color-danger)]"
+                    : ""
+              }
+            >
+              {lastRunResultLabel(task.last_run_result)}
+            </span>
+          </>
+        )}
       </div>
     </button>
   );
@@ -79,22 +103,38 @@ export function TaskList() {
   }, [fetchTasks]);
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div
+      className="h-full min-h-0"
+      style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}
+      role="listbox"
+      aria-label="任务列表"
+    >
       <div className="flex items-center justify-between px-3 py-3 border-b shrink-0" style={{ borderColor: "var(--admiral-border)" }}>
-        <span className="text-xs font-medium uppercase tracking-wider text-[var(--admiral-text-placeholder)]">
+        <span className="text-sm font-medium text-[var(--admiral-text-primary)]">
           任务列表
         </span>
         <Link
           to="/task/new"
-          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 rounded"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-[var(--color-primary)] hover:bg-[rgba(64,158,255,0.1)] rounded transition-colors"
           style={{ borderRadius: "var(--admiral-radius-button)" }}
         >
           + 新建任务
         </Link>
       </div>
-      <div className="flex-1 overflow-y-auto p-2 space-y-1 min-h-0">
+      <div
+        className="flex-1 overflow-y-auto p-2 min-h-0"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
         {tasks.length === 0 ? (
-          <p className="px-3 py-6 text-sm text-[var(--admiral-text-placeholder)]">暂无任务</p>
+          <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+            <span className="text-2xl mb-2" aria-hidden>📋</span>
+            <p className="text-sm text-[var(--admiral-text-secondary)] mb-1">暂无任务</p>
+            <p className="text-xs text-[var(--admiral-text-placeholder)]">点击上方按钮创建第一个任务</p>
+          </div>
         ) : (
           tasks.map((t) => (
             <TaskListItem

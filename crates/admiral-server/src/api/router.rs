@@ -24,6 +24,7 @@ pub fn app(state: AppState) -> Router {
         .route("/bindings", get(oauth::bindings_list))
         .route("/accounts", get(oauth::accounts_list))
         .route("/bind-accounts", post(oauth::bind_accounts))
+        .route("/bindings/{account_id}", axum::routing::delete(oauth::unbind_account))
         .route("/sessions/{id}", axum::routing::delete(oauth::delete_session));
 
     Router::new()

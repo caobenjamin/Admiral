@@ -2,10 +2,12 @@ import { Header } from "./Header";
 import { LeftTab } from "./LeftTab";
 import { MainContent } from "./MainContent";
 import { StatusBar } from "./StatusBar";
+import { Toast } from "@/components/common/Toast";
 
 /** 整体布局：Header | LeftTab + MainContent | StatusBar，关键样式内联保证渲染稳定 */
 export function AppShell() {
   return (
+    <>
     <div
       style={{
         display: "flex",
@@ -32,5 +34,7 @@ export function AppShell() {
       </div>
       <StatusBar />
     </div>
+    <Toast />
+    </>
   );
 }

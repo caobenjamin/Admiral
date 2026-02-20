@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 const AUTH_URL: &str = "https://ad.bilibili.com/developer/developer-authorization";
 const TOKEN_URL: &str = "https://cm.bilibili.com/takumi/api/open_api/oauth2/token";
+const USERINFO_URL: &str = "https://cm.bilibili.com/takumi/api/open_api/oauth2/userinfo";
 const ADVERTISERS_URL: &str = "https://cm.bilibili.com/takumi/api/open_api/oauth2/advertisers";
 
 #[derive(Clone)]
@@ -26,6 +27,7 @@ pub struct OauthService {
     pub vault: TokenVault,
     pub db: DatabaseConnection,
     pub http: Client,
+    pub max_accounts_per_user: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,12 +99,28 @@ pub struct BiliAdvertisersResponse {
     pub data: Option<BiliAdvertisersData>,
 }
 
+#[derive(Debug, Deserialize)]
+struct BiliUserinfoData {
+    pub bid: Option<i64>,
+    pub user_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BiliUserinfoResponse {
+    #[allow(dead_code)]
+    pub code: i32,
+    #[allow(dead_code)]
+    pub message: Option<String>,
+    pub data: Option<BiliUserinfoData>,
+}
+
 impl OauthService {
     pub fn new(
         app_id: String,
         app_secret: String,
         callback_url: String,
         state_ttl_secs: u64,
+        max_accounts_per_user: u32,
         vault: TokenVault,
         db: DatabaseConnection,
     ) -> Self {
@@ -120,6 +138,7 @@ impl OauthService {
             vault,
             db,
             http,
+            max_accounts_per_user,
         }
     }
 
@@ -174,6 +193,32 @@ impl OauthService {
         let refresh_expires_at = data
             .refresh_expires_in
             .map(|s| Utc::now() + chrono::Duration::seconds(s));
+
+        // 换取 token 后调用 B站 userinfo API 获取 bid、user_name
+        let (bid, user_name) = match self
+            .http
+            .get(USERINFO_URL)
+            .header("Authorization", format!("Bearer {}", data.access_token))
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                let ui_resp: BiliUserinfoResponse = resp
+                    .json()
+                    .await
+                    .unwrap_or(BiliUserinfoResponse {
+                        code: -1,
+                        message: Some("parse error".into()),
+                        data: None,
+                    });
+                ui_resp
+                    .data
+                    .map(|d| (d.bid, d.user_name))
+                    .unwrap_or((None, None))
+            }
+            Err(_) => (None, None),
+        };
+
         self.vault
             .store(
                 user_id,
@@ -182,6 +227,8 @@ impl OauthService {
                 &data.refresh_token,
                 expires_at,
                 refresh_expires_at,
+                bid,
+                user_name,
             )
             .await?;
         Ok(user_id)
@@ -262,13 +309,27 @@ impl OauthService {
     /// Get access_token for (user_id, account_id). Refreshes if expiring within 5 minutes.
     pub async fn get_access_token_for_account(&self, user_id: Uuid, account_id: i64) -> Result<String> {
         let account_id_str = account_id.to_string();
+        tracing::debug!(
+            user_id = %user_id,
+            platform = "bilibili",
+            account_id = %account_id_str,
+            "querying ad_account_bindings"
+        );
         let binding = ad_account_binding::Entity::find()
             .filter(ad_account_binding::Column::UserId.eq(user_id))
             .filter(ad_account_binding::Column::Platform.eq("bilibili"))
             .filter(ad_account_binding::Column::AccountId.eq(&account_id_str))
             .one(&self.db)
-            .await?
-            .ok_or(AppError::Forbidden("account not bound".into()))?;
+            .await?;
+        if binding.is_none() {
+            tracing::warn!(
+                user_id = %user_id,
+                platform = "bilibili",
+                account_id = %account_id_str,
+                "ad_account_bindings 查询结果为空，请核对：1) user_id 是否与绑定时的用户一致 2) account_id 类型/值是否与绑定列表中的一致"
+            );
+        }
+        let binding = binding.ok_or(AppError::Forbidden("account not bound".into()))?;
         let token_id = binding.oauth_token_id;
         let stored = self
             .vault
@@ -284,6 +345,23 @@ impl OauthService {
         Ok(stored.access_token)
     }
 
+    /// 解绑单个账户。account_id 属于当前用户且已绑定。
+    pub async fn unbind_account(&self, user_id: Uuid, account_id: i64) -> Result<bool> {
+        let account_id_str = account_id.to_string();
+        let binding = ad_account_binding::Entity::find()
+            .filter(ad_account_binding::Column::UserId.eq(user_id))
+            .filter(ad_account_binding::Column::Platform.eq("bilibili"))
+            .filter(ad_account_binding::Column::AccountId.eq(&account_id_str))
+            .one(&self.db)
+            .await?;
+        if let Some(b) = binding {
+            b.delete(&self.db).await?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
     /// Bind account_ids to the given oauth_token for this user.
     pub async fn bind_accounts(
         &self,
@@ -295,6 +373,26 @@ impl OauthService {
         let meta = self.vault.list_by_user(user_id).await?;
         if !meta.iter().any(|m| m.id == oauth_token_id) {
             return Err(AppError::Forbidden("oauth_token not owned by user".into()));
+        }
+
+        let current_count = ad_account_binding::Entity::find()
+            .filter(ad_account_binding::Column::UserId.eq(user_id))
+            .filter(ad_account_binding::Column::Platform.eq("bilibili"))
+            .count(&self.db)
+            .await? as u32;
+
+        let new_account_ids: std::collections::HashSet<_> = account_ids.iter().copied().collect();
+        let existing_ids: std::collections::HashSet<_> = ad_account_binding::Entity::find()
+            .filter(ad_account_binding::Column::UserId.eq(user_id))
+            .filter(ad_account_binding::Column::Platform.eq("bilibili"))
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .filter_map(|r| r.account_id.parse::<i64>().ok())
+            .collect();
+        let added_count = new_account_ids.difference(&existing_ids).count() as u32;
+        if current_count + added_count > self.max_accounts_per_user {
+            return Err(AppError::AccountLimitExceeded(self.max_accounts_per_user));
         }
         let names: Vec<Option<String>> = account_names
             .map(|v| v.into_iter().map(Some).collect())

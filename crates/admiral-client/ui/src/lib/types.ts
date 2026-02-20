@@ -31,6 +31,8 @@ export interface TokenMeta {
   id: string;
   platform: string;
   created_at: string;
+  bid?: number | null;
+  user_name?: string | null;
 }
 
 export interface InitiateResponse {

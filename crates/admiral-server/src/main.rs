@@ -59,6 +59,7 @@ async fn main() -> anyhow::Result<()> {
                 secrets.bilibili_app_secret.clone(),
                 secrets.bilibili_callback_url.clone(),
                 app_config.oauth.state_cache_ttl_seconds,
+                app_config.oauth.default_max_accounts_per_user,
                 vault,
                 db.clone(),
             );

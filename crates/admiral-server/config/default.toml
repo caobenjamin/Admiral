@@ -39,6 +39,7 @@ max_tokens = 4096
 [oauth]
 state_cache_ttl_seconds = 600
 token_refresh_interval_hours = 10
+default_max_accounts_per_user = 10
 
 [logging]
 level = "info"

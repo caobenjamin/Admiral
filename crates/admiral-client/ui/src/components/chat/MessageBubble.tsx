@@ -59,21 +59,25 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   return (
     <div className={`flex my-2 ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
-          isUser ? "bg-primary text-white rounded-br-md" : "rounded-bl-md"
-        }`}
-        style={
-          isUser
-            ? undefined
+        className={`max-w-[85%] text-sm`}
+        style={{
+          padding: "10px 16px",
+          borderRadius: 16,
+          ...(isUser
+            ? {
+                backgroundColor: "var(--color-primary)",
+                color: "#fff",
+                borderTopRightRadius: 4,
+              }
             : {
                 backgroundColor: "var(--admiral-card)",
-                borderColor: "var(--admiral-border)",
-                borderWidth: 1,
+                border: "1px solid var(--admiral-border)",
                 color: "var(--admiral-text-primary)",
-              }
-        }
+                borderTopLeftRadius: 4,
+              }),
+        }}
       >
-        <span className="font-medium text-xs opacity-80 block mb-0.5">
+        <span className="font-medium text-xs opacity-80 block mb-0.5" style={{ fontSize: 12 }}>
           {isUser ? "我" : "Admiral"}
         </span>
         <div className="whitespace-pre-wrap break-words">{message.content}</div>

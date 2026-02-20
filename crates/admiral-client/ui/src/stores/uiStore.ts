@@ -6,6 +6,10 @@ export type ConnectionStatus = "online" | "offline" | "connecting";
 
 export type ActiveTab = "media" | "tasks" | "skills" | "other";
 
+const TASK_LIST_WIDTH_MIN = 240;
+const TASK_LIST_WIDTH_MAX = 400;
+const TASK_LIST_WIDTH_DEFAULT = 300;
+
 interface UiState {
   connectionStatus: ConnectionStatus;
   setConnectionStatus: (s: ConnectionStatus) => void;
@@ -15,6 +19,8 @@ interface UiState {
   setActiveTab: (tab: ActiveTab) => void;
   leftTabCollapsed: boolean;
   setLeftTabCollapsed: (v: boolean) => void;
+  taskListWidth: number;
+  setTaskListWidth: (w: number) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -26,4 +32,9 @@ export const useUiStore = create<UiState>((set) => ({
   setActiveTab: (activeTab) => set({ activeTab }),
   leftTabCollapsed: false,
   setLeftTabCollapsed: (leftTabCollapsed) => set({ leftTabCollapsed }),
+  taskListWidth: TASK_LIST_WIDTH_DEFAULT,
+  setTaskListWidth: (taskListWidth) =>
+    set({
+      taskListWidth: Math.min(TASK_LIST_WIDTH_MAX, Math.max(TASK_LIST_WIDTH_MIN, taskListWidth)),
+    }),
 }));

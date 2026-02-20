@@ -56,3 +56,11 @@ pub async fn oauth_delete_session(
     let token = get_access_token(ctx)?;
     ctx.api_client.oauth_delete_session(&token, session_id).await
 }
+
+pub async fn oauth_unbind_account(
+    ctx: &AuthContext,
+    account_id: i64,
+) -> Result<(), ApiError> {
+    let token = get_access_token(ctx)?;
+    ctx.api_client.oauth_unbind_account(&token, account_id).await
+}

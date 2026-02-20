@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import * as tauri from "@/lib/tauri";
+import { useToastStore } from "@/stores/toastStore";
 import type {
   TokenMeta,
   OAuthAccountsResponse,
@@ -8,33 +9,129 @@ import type {
   BiliAdvertiserRecord,
 } from "@/lib/types";
 
-function formatDate(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString("zh-CN", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
+/** 确认解绑弹窗 */
+function ConfirmUnbindDialog({
+  open,
+  accountName,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  accountName: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="unbind-dialog-title"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 100,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "rgba(0,0,0,0.4)",
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        style={{
+          backgroundColor: "var(--admiral-card)",
+          border: "1px solid var(--admiral-border)",
+          borderRadius: "var(--admiral-radius-card)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
+          maxWidth: 480,
+          width: "min(90vw, 480px)",
+          overflow: "hidden",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            padding: "20px 24px",
+            borderBottom: "1px solid var(--admiral-border)",
+            fontSize: 16,
+            fontWeight: 600,
+            color: "var(--admiral-text-primary)",
+          }}
+          id="unbind-dialog-title"
+        >
+          确认解绑
+        </div>
+        <div style={{ padding: "20px 24px", color: "var(--admiral-text-primary)", fontSize: 14 }}>
+          确定要解绑该账户{accountName ? `「${accountName}」` : ""}吗？
+        </div>
+        <div
+          style={{
+            padding: "12px 24px 20px",
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 12,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: "8px 16px",
+              fontSize: 14,
+              borderRadius: "var(--admiral-radius-button)",
+              border: "1px solid var(--admiral-border)",
+              backgroundColor: "var(--admiral-card)",
+              color: "var(--admiral-text-primary)",
+              cursor: "pointer",
+            }}
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            style={{
+              padding: "8px 16px",
+              fontSize: 14,
+              fontWeight: 500,
+              borderRadius: "var(--admiral-radius-button)",
+              border: "none",
+              backgroundColor: "var(--color-danger)",
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            确认解绑
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-/** 账户绑定弹窗 */
+/** 新增账户弹窗：按 oauth_session_id 拉取该 token 下的账户列表 */
 function BindAccountModal({
   open,
   onClose,
-  status,
+  oauthSessionId,
   onSuccess,
 }: {
   open: boolean;
   onClose: () => void;
-  status: TokenMeta[];
+  oauthSessionId: string | null;
   onSuccess: () => void;
 }) {
+  const showToast = useToastStore((s) => s.show);
   const [accounts, setAccounts] = useState<OAuthAccountsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -42,43 +139,46 @@ function BindAccountModal({
   const [bindLoading, setBindLoading] = useState(false);
 
   const loadAccounts = useCallback(async () => {
-    if (status.length === 0) return;
+    if (!oauthSessionId) return;
     setLoading(true);
     setError("");
     try {
-      const data = await tauri.oauthAccountsList();
+      const data = await tauri.oauthAccountsList(oauthSessionId);
       setAccounts(data);
-      if (status.length > 0) {
-        setSelectedAccountIds([]);
-      }
+      setSelectedAccountIds([]);
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [status.length]);
+  }, [oauthSessionId]);
 
   useEffect(() => {
-    if (open) {
+    if (open && oauthSessionId) {
       loadAccounts();
     } else {
       setAccounts(null);
       setError("");
       setSelectedAccountIds([]);
     }
-  }, [open, loadAccounts]);
+  }, [open, oauthSessionId, loadAccounts]);
 
   const handleBind = async () => {
-    const tokenId = status[0]?.id;
-    if (!tokenId || selectedAccountIds.length === 0) return;
+    if (!oauthSessionId || selectedAccountIds.length === 0) return;
     setBindLoading(true);
     setError("");
     try {
-      await tauri.oauthBindAccounts(tokenId, selectedAccountIds);
+      await tauri.oauthBindAccounts(oauthSessionId, selectedAccountIds);
+      showToast("绑定成功", "success");
       onSuccess();
       onClose();
     } catch (e) {
-      setError(String(e));
+      const msg = String(e);
+      if (msg.includes("ACCOUNT_LIMIT") || msg.includes("账户数量上限")) {
+        showToast(msg, "error");
+      } else {
+        setError(msg);
+      }
     } finally {
       setBindLoading(false);
     }
@@ -142,12 +242,12 @@ function BindAccountModal({
           }}
           id="bind-modal-title"
         >
-          账户绑定
+          新增账户
         </div>
         <div style={{ padding: 20, overflow: "auto", flex: 1 }}>
-          {status.length === 0 ? (
+          {!oauthSessionId ? (
             <p style={{ color: "var(--admiral-text-secondary)", fontSize: 14 }}>
-              请先发起 B 站授权，完成授权后再绑定账户。
+              请先选择授权来源（BID / 用户名）。
             </p>
           ) : error ? (
             <div
@@ -175,22 +275,34 @@ function BindAccountModal({
                   marginBottom: 12,
                 }}
               >
-                共 {accounts.total} 个账户，勾选需要绑定的账户后点击确认。
+                共 {accounts.total} 个账户，勾选需要绑定的账户后点击保存。
               </p>
               <div style={{ marginBottom: 12, display: "flex", gap: 12 }}>
                 <button
                   type="button"
                   onClick={selectAll}
-                  className="text-sm hover:underline"
-                  style={{ color: "var(--color-primary)" }}
+                  style={{
+                    fontSize: 12,
+                    color: "var(--color-primary)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
                 >
                   全选
                 </button>
                 <button
                   type="button"
                   onClick={clearSelection}
-                  className="text-sm hover:underline"
-                  style={{ color: "var(--admiral-text-secondary)" }}
+                  style={{
+                    fontSize: 12,
+                    color: "var(--admiral-text-secondary)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
                 >
                   清空
                 </button>
@@ -211,9 +323,7 @@ function BindAccountModal({
                         textAlign: "left",
                       }}
                     >
-                      <th style={{ padding: "10px 12px 10px 0", width: 44 }}>
-                        选择
-                      </th>
+                      <th style={{ padding: "10px 12px 10px 0", width: 44 }}>选择</th>
                       <th style={{ padding: "10px 12px 10px 0" }}>账户 ID</th>
                       <th style={{ padding: "10px 12px 10px 0" }}>账户名称</th>
                       <th style={{ padding: "10px 0" }}>角色</th>
@@ -246,9 +356,7 @@ function BindAccountModal({
                         <td style={{ padding: "10px 12px 10px 0" }}>
                           {r.account_name ?? "—"}
                         </td>
-                        <td style={{ padding: "10px 0" }}>
-                          {r.account_role ?? "—"}
-                        </td>
+                        <td style={{ padding: "10px 0" }}>{r.account_role ?? "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -287,7 +395,7 @@ function BindAccountModal({
           >
             取消
           </button>
-          {status.length > 0 &&
+          {oauthSessionId &&
             accounts &&
             accounts.records.length > 0 && (
               <button
@@ -311,7 +419,7 @@ function BindAccountModal({
                       : "pointer",
                 }}
               >
-                {bindLoading ? "提交中…" : `确认绑定 (${selectedAccountIds.length})`}
+                {bindLoading ? "保存中…" : `保存 (${selectedAccountIds.length})`}
               </button>
             )}
         </div>
@@ -321,11 +429,18 @@ function BindAccountModal({
 }
 
 export function PlatformAuth() {
+  const showToast = useToastStore((s) => s.show);
   const [status, setStatus] = useState<TokenMeta[]>([]);
   const [bindings, setBindings] = useState<BoundAccountRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
+  const [searchName, setSearchName] = useState("");
+  const [searchId, setSearchId] = useState("");
+  const [addAccountOpen, setAddAccountOpen] = useState(false);
+  const [addAccountDropdownOpen, setAddAccountDropdownOpen] = useState(false);
+  const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
+  const [unbindTarget, setUnbindTarget] = useState<BoundAccountRecord | null>(null);
+  const [initiatePolling, setInitiatePolling] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -348,16 +463,89 @@ export function PlatformAuth() {
     loadData();
   }, [loadData]);
 
+  // 授权成功后轮询 status，检测到新 token 后自动刷新
+  const prevStatusLenRef = useRef(0);
+  useEffect(() => {
+    if (!initiatePolling) return;
+    prevStatusLenRef.current = status.length;
+    const t = setInterval(async () => {
+      const [statusList, bindingsList] = await Promise.all([
+        tauri.oauthStatus().catch(() => [] as TokenMeta[]),
+        tauri.oauthBindingsList().catch(() => [] as BoundAccountRecord[]),
+      ]);
+      setStatus(statusList);
+      setBindings(bindingsList);
+      if (statusList.length > prevStatusLenRef.current) {
+        setInitiatePolling(false);
+        showToast("授权成功", "success");
+      }
+      prevStatusLenRef.current = statusList.length;
+    }, 2000);
+    const timeout = setTimeout(() => {
+      setInitiatePolling(false);
+      showToast("授权超时，请重试", "error");
+    }, 5 * 60 * 1000);
+    return () => {
+      clearInterval(t);
+      clearTimeout(timeout);
+    };
+  }, [initiatePolling, status.length, showToast]);
+
   const handleInitiate = async () => {
     setError("");
     try {
       const { authorization_url } = await tauri.oauthInitiate();
       await invoke("open_url", { url: authorization_url });
-      setTimeout(loadData, 2000);
+      setInitiatePolling(true);
     } catch (e) {
       setError(String(e));
     }
   };
+
+  const filteredBindings = useMemo(() => {
+    let list = bindings;
+    if (searchName.trim()) {
+      const kw = searchName.trim().toLowerCase();
+      list = list.filter(
+        (b) =>
+          (b.account_name ?? "").toLowerCase().includes(kw)
+      );
+    }
+    if (searchId.trim()) {
+      const idStr = searchId.trim();
+      list = list.filter((b) => String(b.account_id) === idStr);
+    }
+    return list;
+  }, [bindings, searchName, searchId]);
+
+  const handleUnbind = async () => {
+    if (!unbindTarget) return;
+    try {
+      await tauri.oauthUnbindAccount(unbindTarget.account_id);
+      showToast("解绑成功", "success");
+      setUnbindTarget(null);
+      loadData();
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  };
+
+  const openBindModal = (tokenId: string) => {
+    setSelectedTokenId(tokenId);
+    setAddAccountDropdownOpen(false);
+    setAddAccountOpen(true);
+  };
+
+  // 点击外部关闭下拉
+  useEffect(() => {
+    if (!addAccountDropdownOpen) return;
+    const onDocClick = () => setAddAccountDropdownOpen(false);
+    const t = setTimeout(() => document.addEventListener("click", onDocClick), 0);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("click", onDocClick);
+    };
+  }, [addAccountDropdownOpen]);
 
   const cardStyle: React.CSSProperties = {
     backgroundColor: "var(--admiral-card)",
@@ -376,34 +564,123 @@ export function PlatformAuth() {
         gap: 24,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
-        <h2
+      <h2
+        style={{
+          fontSize: 18,
+          fontWeight: 600,
+          color: "var(--admiral-text-primary)",
+          margin: 0,
+        }}
+      >
+        授权管理
+      </h2>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div
           style={{
-            fontSize: 18,
-            fontWeight: 600,
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "6px 12px",
+            borderRadius: "var(--admiral-radius-button)",
+            border: "1px solid var(--admiral-border)",
+            fontSize: 14,
             color: "var(--admiral-text-primary)",
-            margin: 0,
           }}
         >
-          B 站 媒体账户
-        </h2>
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <button
-            type="button"
-            onClick={() => setModalOpen(true)}
+          [▼ B站]
+        </div>
+        <div style={{ flex: 1, minWidth: 180, display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <input
+            type="text"
+            placeholder="账户名称搜索"
+            value={searchName}
+            onChange={(e) => setSearchName(e.target.value)}
             style={{
-              padding: "8px 16px",
+              flex: 1,
+              minWidth: 120,
+              padding: "8px 12px",
               fontSize: 14,
-              fontWeight: 500,
-              borderRadius: "var(--admiral-radius-button)",
-              border: "none",
-              backgroundColor: "var(--color-primary)",
-              color: "#fff",
-              cursor: "pointer",
+              borderRadius: "var(--admiral-radius-input)",
+              border: "1px solid var(--admiral-border)",
+              color: "var(--admiral-text-primary)",
             }}
-          >
-            账户绑定
-          </button>
+          />
+          <input
+            type="text"
+            placeholder="账户ID精确匹配"
+            value={searchId}
+            onChange={(e) => setSearchId(e.target.value)}
+            style={{
+              width: 140,
+              padding: "8px 12px",
+              fontSize: 14,
+              borderRadius: "var(--admiral-radius-input)",
+              border: "1px solid var(--admiral-border)",
+              color: "var(--admiral-text-primary)",
+            }}
+          />
+        </div>
+        <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setAddAccountDropdownOpen(!addAccountDropdownOpen);
+              }}
+              disabled={status.length === 0}
+              style={{
+                padding: "8px 16px",
+                fontSize: 14,
+                fontWeight: 500,
+                borderRadius: "var(--admiral-radius-button)",
+                border: "1px solid var(--admiral-border)",
+                backgroundColor: "var(--admiral-card)",
+                color: status.length === 0 ? "var(--admiral-text-placeholder)" : "var(--admiral-text-primary)",
+                cursor: status.length === 0 ? "not-allowed" : "pointer",
+              }}
+            >
+              新增账户 ▾
+            </button>
+            {addAccountDropdownOpen && status.length > 0 && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  marginTop: 4,
+                  minWidth: 180,
+                  backgroundColor: "var(--admiral-card)",
+                  border: "1px solid var(--admiral-border)",
+                  borderRadius: "var(--admiral-radius-button)",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                  zIndex: 10,
+                }}
+              >
+                {status.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => openBindModal(s.id)}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      padding: "10px 14px",
+                      textAlign: "left",
+                      fontSize: 14,
+                      border: "none",
+                      background: "none",
+                      color: "var(--admiral-text-primary)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {s.user_name || (s.bid != null ? `BID: ${s.bid}` : s.id.slice(0, 8))}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={handleInitiate}
@@ -417,7 +694,7 @@ export function PlatformAuth() {
               cursor: "pointer",
             }}
           >
-            发起授权
+            新增授权
           </button>
         </div>
       </div>
@@ -449,7 +726,7 @@ export function PlatformAuth() {
           >
             加载中…
           </div>
-        ) : bindings.length > 0 ? (
+        ) : filteredBindings.length > 0 ? (
           <>
             <div
               style={{
@@ -460,7 +737,7 @@ export function PlatformAuth() {
                 color: "var(--admiral-text-primary)",
               }}
             >
-              已绑定账户 ({bindings.length})
+              已绑定账户 ({filteredBindings.length})
             </div>
             <div style={{ overflowX: "auto" }}>
               <table
@@ -478,29 +755,20 @@ export function PlatformAuth() {
                       textAlign: "left",
                     }}
                   >
-                    <th style={{ padding: "12px 16px", fontWeight: 500 }}>
-                      平台
-                    </th>
-                    <th style={{ padding: "12px 16px", fontWeight: 500 }}>
-                      账户 ID
-                    </th>
-                    <th style={{ padding: "12px 16px", fontWeight: 500 }}>
-                      账户名称
-                    </th>
-                    <th style={{ padding: "12px 16px", fontWeight: 500 }}>
-                      绑定时间
-                    </th>
+                    <th style={{ padding: "12px 16px", fontWeight: 500 }}>账户名称</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 500 }}>账户ID</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 500 }}>操作</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {bindings.map((b) => (
+                  {filteredBindings.map((b) => (
                     <tr
                       key={`${b.platform}-${b.account_id}`}
                       style={{
                         borderBottom: "1px solid var(--admiral-border)",
                       }}
                     >
-                      <td style={{ padding: "12px 16px" }}>{b.platform}</td>
+                      <td style={{ padding: "12px 16px" }}>{b.account_name ?? "—"}</td>
                       <td
                         style={{
                           padding: "12px 16px",
@@ -510,15 +778,20 @@ export function PlatformAuth() {
                         {b.account_id}
                       </td>
                       <td style={{ padding: "12px 16px" }}>
-                        {b.account_name ?? "—"}
-                      </td>
-                      <td
-                        style={{
-                          padding: "12px 16px",
-                          color: "var(--admiral-text-secondary)",
-                        }}
-                      >
-                        {formatDate(b.created_at)}
+                        <button
+                          type="button"
+                          onClick={() => setUnbindTarget(b)}
+                          style={{
+                            fontSize: 14,
+                            color: "var(--color-danger)",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            padding: "4px 8px",
+                          }}
+                        >
+                          删除
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -535,89 +808,29 @@ export function PlatformAuth() {
               fontSize: 14,
             }}
           >
-            <p style={{ margin: 0, marginBottom: 8 }}>
-              暂无已绑定账户。
-            </p>
+            <p style={{ margin: 0, marginBottom: 8 }}>暂无已绑定账户</p>
             <p style={{ margin: 0 }}>
-              请先发起 B 站授权，完成授权后点击「账户绑定」选择要绑定的广告账户。
+              请先发起 B 站授权，完成授权后点击「新增账户」选择要绑定的广告账户。
             </p>
           </div>
         )}
       </div>
 
-      {/* 授权会话管理（折叠或次要展示） */}
-      {status.length > 0 && (
-        <details
-          style={{
-            ...cardStyle,
-            overflow: "hidden",
-          }}
-        >
-          <summary
-            style={{
-              padding: "12px 16px",
-              fontSize: 14,
-              fontWeight: 500,
-              color: "var(--admiral-text-secondary)",
-              cursor: "pointer",
-            }}
-          >
-            授权会话 ({status.length}) — 点击展开管理
-          </summary>
-          <div
-            style={{
-              borderTop: "1px solid var(--admiral-border)",
-              padding: 12,
-            }}
-          >
-            {status.map((s) => (
-              <div
-                key={s.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "8px 12px",
-                  fontSize: 13,
-                  color: "var(--admiral-text-primary)",
-                  borderBottom: "1px solid var(--admiral-border)",
-                }}
-              >
-                <span>
-                  {s.platform} · {formatDate(s.created_at)}
-                </span>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await tauri.oauthDeleteSession(s.id);
-                      loadData();
-                    } catch (e) {
-                      setError(String(e));
-                    }
-                  }}
-                  style={{
-                    fontSize: 12,
-                    color: "var(--color-danger)",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "4px 8px",
-                  }}
-                >
-                  取消授权
-                </button>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
-
       <BindAccountModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        status={status}
+        open={addAccountOpen}
+        onClose={() => {
+          setAddAccountOpen(false);
+          setSelectedTokenId(null);
+        }}
+        oauthSessionId={selectedTokenId}
         onSuccess={loadData}
+      />
+
+      <ConfirmUnbindDialog
+        open={!!unbindTarget}
+        accountName={unbindTarget?.account_name ?? ""}
+        onClose={() => setUnbindTarget(null)}
+        onConfirm={handleUnbind}
       />
     </div>
   );

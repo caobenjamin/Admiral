@@ -109,6 +109,23 @@ pub async fn bind_accounts(
     Ok(axum::http::StatusCode::CREATED)
 }
 
+pub async fn unbind_account(
+    State(state): State<AppState>,
+    auth_user: crate::middleware::auth_guard::AuthUser,
+    axum::extract::Path(account_id): axum::extract::Path<i64>,
+) -> Result<StatusCode> {
+    let oauth = state
+        .oauth
+        .as_ref()
+        .ok_or(crate::error::AppError::BadRequest("OAuth not configured".into()))?;
+    let deleted = oauth.unbind_account(auth_user.0, account_id).await?;
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Ok(StatusCode::NOT_FOUND)
+    }
+}
+
 pub async fn delete_session(
     State(state): State<AppState>,
     auth_user: crate::middleware::auth_guard::AuthUser,
