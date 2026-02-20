@@ -3,9 +3,27 @@
 use crate::error::{AppError, Result};
 use crate::service::oauth_service::OauthService;
 use reqwest::Client;
+use tracing::info;
 use uuid::Uuid;
 
 const MAPI_BASE: &str = "https://cm.bilibili.com/takumi/api";
+const BODY_LOG_LIMIT: usize = 2048;
+
+fn truncate_for_log(bytes: &[u8], limit: usize) -> String {
+    if bytes.is_empty() {
+        return "(empty)".to_string();
+    }
+    match String::from_utf8(bytes.to_vec()) {
+        Ok(s) => {
+            if s.len() > limit {
+                format!("{}... (truncated, total {} chars)", &s[..limit], s.len())
+            } else {
+                s
+            }
+        }
+        Err(_) => format!("<binary, {} bytes>", bytes.len()),
+    }
+}
 
 pub async fn proxy(
     oauth: &OauthService,
@@ -45,9 +63,32 @@ pub async fn proxy(
     if let Some(b) = body {
         req = req.json(b);
     }
+
+    let request_body_log = body
+        .map(|b| serde_json::to_string(b).unwrap_or_else(|_| "<invalid json>".into()))
+        .unwrap_or_else(|| "(none)".into());
+    let req_body_display = if request_body_log.len() > BODY_LOG_LIMIT {
+        format!("{}... (truncated)", &request_body_log[..BODY_LOG_LIMIT])
+    } else {
+        request_body_log
+    };
+    info!(
+        mapi_url = %url,
+        mapi_method = %method,
+        mapi_request_body = %req_body_display,
+        "MAPI external call"
+    );
+
     let resp = req.send().await.map_err(|e| AppError::Upstream(e.to_string()))?;
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.map_err(|e| AppError::Upstream(e.to_string()))?;
+    let bytes_slice = bytes.as_ref();
+    let response_log = truncate_for_log(bytes_slice, BODY_LOG_LIMIT);
+    info!(
+        mapi_status = status,
+        mapi_response_body = %response_log,
+        "MAPI external response"
+    );
     Ok((status, bytes.to_vec()))
 }
 

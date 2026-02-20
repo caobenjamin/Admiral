@@ -105,6 +105,40 @@ crates/admiral-server/
 
 **B 站 OAuth 说明**：回调地址必须为 HTTPS。本仓库采用「服务端在远端运行」的联调模式，服务端部署在具备 HTTPS 的远端服务器，详见 [服务器部署与 OAuth 联调](docs/服务器部署与OAuth联调.md)。
 
+### 服务端日志
+
+#### 如何开启日志
+
+日志默认已开启，输出到 **stdout**。通过以下方式控制：
+
+- **日志级别**：环境变量 `ADMIRAL_LOG_LEVEL` 覆盖配置，例如 `info`、`debug`、`trace`。未设置时使用 `config/*.toml` 中 `[logging].level`（development 默认 `debug`，production 默认 `info`）。
+- **输出格式**：由 `config/*.toml` 中 `[logging].format` 控制：
+  - `pretty`：人类可读（development 默认），适合本地调试
+  - `json`：JSON 行（production 默认），便于采集到 ELK/Loki 等
+
+```bash
+# 联调时使用 debug 查看完整请求/响应
+export ADMIRAL_LOG_LEVEL=debug
+cargo run -p admiral-server
+```
+
+#### 如何查看日志
+
+- **本地运行**：日志直接打印到终端
+- **systemd 等托管**：输出到 stdout，由 systemd 或日志收集器接管（如 `journalctl -u admiral-server -f`）
+- **Docker/K8s**：`docker logs` 或 kubectl logs 查看容器 stdout
+
+#### 记录了哪些日志
+
+| 类别 | 内容 | 示例 / 说明 |
+|------|------|-------------|
+| **客户端请求** | 方法、完整 URI、请求体、响应状态、耗时 | `client request method=POST uri=/api/v1/mapi/proxy request_body={...} response_status=200 elapsed_ms=123` |
+| **给客户端的返回** | MAPI/LLM 返回给客户端的 HTTP 状态、响应体预览 | MAPI、LLM handler 中记录 `response_status`、`response_body`（超长截断） |
+| **MAPI 外部调用** | 请求：目标 URL、Method、请求体；响应：状态、响应体 | `MAPI external call mapi_url=... mapi_method=POST` / `MAPI external response mapi_status=200 mapi_response_body=...` |
+| **LLM 外部调用** | 请求：URL、provider、请求体、是否流式；响应：状态、响应体或流式标记 | `LLM external call llm_url=... llm_provider=deepseek` / `LLM external response llm_status=200 llm_response_body=...` |
+
+**说明**：请求体 / 响应体超过阈值会截断（如 2048 字符），避免日志过大。不会记录 `Authorization`、API Key 等敏感 header。请求体若超过 1MB 读取 limit，会标记为 `(omitted)`，handler 可能收到空 body，生产环境可根据需要调整或关闭 body 日志。
+
 ---
 
 ## 客户端已实现功能

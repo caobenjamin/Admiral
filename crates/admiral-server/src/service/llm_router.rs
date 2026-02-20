@@ -3,6 +3,38 @@
 use crate::error::{AppError, Result};
 use reqwest::Client;
 use serde_json::Value;
+use tracing::info;
+
+const BODY_LOG_LIMIT: usize = 2048;
+
+fn body_preview(v: &Value, limit: usize) -> String {
+    match serde_json::to_string(v) {
+        Ok(s) => {
+            if s.len() > limit {
+                format!("{}... (truncated, {} chars)", &s[..limit], s.len())
+            } else {
+                s
+            }
+        }
+        Err(_) => "<invalid>".to_string(),
+    }
+}
+
+fn bytes_preview(bytes: &[u8], limit: usize) -> String {
+    if bytes.is_empty() {
+        return "(empty)".to_string();
+    }
+    match String::from_utf8(bytes.to_vec()) {
+        Ok(s) => {
+            if s.len() > limit {
+                format!("{}... (truncated, {} chars)", &s[..limit], s.len())
+            } else {
+                s
+            }
+        }
+        Err(_) => format!("<binary, {} bytes>", bytes.len()),
+    }
+}
 
 #[derive(Clone)]
 pub struct LlmProxy {
@@ -25,6 +57,12 @@ impl LlmProxy {
     /// Chat completion (non-stream). Returns the JSON response body.
     pub async fn chat(&self, body: &Value) -> Result<Vec<u8>> {
         let url = format!("{}/v1/chat/completions", self.base_url);
+        info!(
+            llm_url = %url,
+            llm_provider = %self.provider,
+            llm_request_body = %body_preview(body, BODY_LOG_LIMIT),
+            "LLM external call"
+        );
         let resp = self
             .http
             .post(&url)
@@ -36,6 +74,12 @@ impl LlmProxy {
             .map_err(|e| AppError::Upstream(e.to_string()))?;
         let status = resp.status();
         let bytes = resp.bytes().await.map_err(|e| AppError::Upstream(e.to_string()))?;
+        let bytes_slice = bytes.as_ref();
+        info!(
+            llm_status = %status,
+            llm_response_body = %bytes_preview(bytes_slice, BODY_LOG_LIMIT),
+            "LLM external response"
+        );
         if !status.is_success() {
             return Err(AppError::Upstream(
                 String::from_utf8_lossy(&bytes).to_string(),
@@ -47,6 +91,13 @@ impl LlmProxy {
     /// Chat completion (stream). Returns the response body stream.
     pub async fn chat_stream(&self, body: &Value) -> Result<reqwest::Response> {
         let url = format!("{}/v1/chat/completions", self.base_url);
+        info!(
+            llm_url = %url,
+            llm_provider = %self.provider,
+            llm_request_body = %body_preview(body, BODY_LOG_LIMIT),
+            llm_stream = true,
+            "LLM external call"
+        );
         let resp = self
             .http
             .post(&url)
@@ -56,9 +107,15 @@ impl LlmProxy {
             .send()
             .await
             .map_err(|e| AppError::Upstream(e.to_string()))?;
-        if !resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(AppError::Upstream(body));
+        let status = resp.status();
+        info!(
+            llm_status = %status,
+            llm_stream = true,
+            "LLM external response (stream)"
+        );
+        if !status.is_success() {
+            let err_body = resp.text().await.unwrap_or_default();
+            return Err(AppError::Upstream(err_body));
         }
         Ok(resp)
     }
