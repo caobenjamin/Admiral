@@ -132,6 +132,28 @@ pub async fn open_url(url: String) -> Result<(), String> {
     .map_err(|e| e.to_string())?
 }
 
+// ---------- Client config (persistent config file) ----------
+
+/// Path to the config file (e.g. ~/.config/admiral/client.json). Frontend can show this for manual edit.
+#[tauri::command]
+pub fn get_config_path() -> Option<String> {
+    ClientConfig::config_file_path().and_then(|p| p.into_os_string().into_string().ok())
+}
+
+/// Current server API base URL (from config file + env, as loaded at startup).
+#[tauri::command]
+pub fn get_server_url() -> String {
+    ClientConfig::from_env().api_base_url
+}
+
+/// Save server URL to the persistent config file. Restart the app for the new URL to take effect.
+#[tauri::command]
+pub fn set_server_url(url: String) -> Result<(), String> {
+    let mut config = ClientConfig::from_env();
+    config.set_api_base_url(url);
+    config.save().map_err(|e| e.to_string())
+}
+
 /// Create AppState from config (used at startup).
 pub fn create_app_state() -> AppState {
     let config = ClientConfig::from_env();

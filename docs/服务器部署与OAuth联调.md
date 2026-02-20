@@ -1,6 +1,8 @@
 # 服务器部署与 OAuth 联调
 
-B 站 OAuth 要求**授权回调地址为 HTTPS**，本地 `localhost` 无法满足，因此需要把服务端部署到具备 HTTPS 的服务器上再继续联调。
+本仓库采用「**服务端在远端运行、本地仅做代码编辑**」的联调模式。服务端需部署到具备 HTTPS 的远端服务器，客户端在本地运行并连接远端 API。
+
+B 站 OAuth 要求**授权回调地址为 HTTPS**，本地 `localhost` 无法满足，因此服务端必须部署到具备 HTTPS 的服务器上。
 
 ## 一、问题说明
 
@@ -70,9 +72,9 @@ server {
 
 ---
 
-## 三、客户端联调（指向服务器）
+## 三、客户端联调（指向远端服务器）
 
-本地继续用 **Tauri 客户端** 联调时，只需让客户端请求**服务器上的 API**：
+本地运行 **Tauri 客户端** 进行联调时，需让客户端请求**远端服务器上的 API**：
 
 - 设置环境变量 **`ADMIRAL_API_BASE_URL`** = 服务器 API 的 HTTPS 地址（无路径、无末尾斜杠），例如：
   - `export ADMIRAL_API_BASE_URL=https://api.yourdomain.com`
@@ -98,4 +100,4 @@ cargo tauri dev
 4. [ ] 本地客户端已设置 `ADMIRAL_API_BASE_URL=https://你的域名` 并重启。
 5. [ ] 在客户端中发起 B 站授权，能在浏览器中完成授权并正常跳回，不再出现 `ERR_SSL_PROTOCOL_ERROR`。
 
-完成以上后，即可在服务器 + 本地客户端的组合下继续完成 OAuth、MAPI、LLM 等联调。
+完成以上后，即可在「远端服务器 + 本地客户端」的组合下继续完成 OAuth、MAPI、LLM 等联调。

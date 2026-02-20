@@ -24,6 +24,9 @@ open = "5"
 # Local database
 # rusqlite = { version = "0.32", features = ["bundled"] }
 
+# Config directory (cross-platform)
+dirs = "5"
+
 # Network
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 # tokio-tungstenite = "0.24"

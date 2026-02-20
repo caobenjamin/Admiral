@@ -1,0 +1,4 @@
+{
+  "api_base_url": "https://admiral.example.com",
+  "credential_path": "credentials.json"
+}

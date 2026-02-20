@@ -24,6 +24,9 @@ fn main() {
             tauri_bridge::mapi_proxy,
             tauri_bridge::llm_chat,
             tauri_bridge::open_url,
+            tauri_bridge::get_config_path,
+            tauri_bridge::get_server_url,
+            tauri_bridge::set_server_url,
         ])
         .run(tauri::generate_context!())
         .expect("error running Admiral");

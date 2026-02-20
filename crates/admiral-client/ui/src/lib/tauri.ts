@@ -83,3 +83,13 @@ export async function llmChat(
     req: { messages, stream: stream ?? false, model, max_tokens: maxTokens },
   });
 }
+
+/** 当前客户端使用的服务端地址（用于排查是否连错服务器） */
+export async function getServerUrl(): Promise<string> {
+  return invoke("get_server_url");
+}
+
+/** 持久化配置文件路径，修改其中的 api_base_url 可更换服务端地址 */
+export async function getConfigPath(): Promise<string | null> {
+  return invoke("get_config_path");
+}

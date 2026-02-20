@@ -1,6 +1,8 @@
 # 使用 GitHub 克隆方式部署 Admiral Server（GCP Ubuntu）
 
-从零到在服务器上运行 `admiral-server` 的完整步骤。
+从零到在远端服务器上运行 `admiral-server` 的完整步骤。
+
+**联调模式**：本仓库采用「服务端在远端运行、本地仅做代码编辑」的方式。服务端部署并运行在 GCP 等远端服务器，本地通过 Git 推送代码后，在服务器上 pull、编译、重启。
 
 ---
 
@@ -213,4 +215,4 @@ cargo build --release -p admiral-server
 - [ ] 服务器：配置 `.env`（至少 `ADMIRAL_DATABASE_URL`）、运行迁移、启动 `admiral-server`
 - [ ] GCP：防火墙放行服务监听端口
 
-按上述步骤做完，即可在 GCP Ubuntu 上通过 GitHub 克隆并运行 Admiral Server，并用于联调。
+按上述步骤做完，即可在 GCP Ubuntu 上通过 GitHub 克隆并运行 Admiral Server。本地客户端设置 `ADMIRAL_API_BASE_URL` 指向该服务器地址即可进行联调。

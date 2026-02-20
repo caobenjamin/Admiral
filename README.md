@@ -10,9 +10,9 @@ Admiral 是一个服务于广告代理公司优化师的本地 Agent 控制系�
 admiral/
 ├── crates/
 │   ├── admiral-types/      # 共享类型定义 (Server + Client 复用)
-│   ├── admiral-server/     # 服务端 (Axum + PostgreSQL)
-│   └── admiral-client/     # 桌面客户端 (Tauri 2 + React)
-├── docker-compose.yml      # 本地开发环境 (PostgreSQL)
+│   ├── admiral-server/     # 服务端 (Axum + PostgreSQL)，部署于远端运行
+│   └── admiral-client/     # 桌面客户端 (Tauri 2 + React)，本地运行
+├── docker-compose.yml      # 可选：远端服务器上可用的 PostgreSQL 编排
 └── prd/                    # 需求与架构文档
 ```
 
@@ -22,7 +22,7 @@ admiral/
 |------|------|
 | 服务端 | Rust, Axum, SeaORM, PostgreSQL |
 | 客户端 Rust | Rust, Tauri 2, SQLite |
-| 客户端 UI | React 19, TypeScript, Vite, shadcn/ui, Tailwind CSS |
+| 客户端 UI | React 19, TypeScript, Vite 6, Tailwind CSS 4, Zustand |
 | 进程内缓存 | moka, dashmap, arc-swap |
 
 ---
@@ -103,13 +103,13 @@ crates/admiral-server/
 - OAuth 与 MAPI：`ADMIRAL_TOKEN_ENCRYPTION_KEY`（32 字节 hex）、`ADMIRAL_BILI_APP_ID`、`ADMIRAL_BILI_APP_SECRET`、`ADMIRAL_BILI_CALLBACK_URL`
 - LLM：`ADMIRAL_LLM_DEFAULT_PROVIDER`、对应厂商的 `ADMIRAL_*_API_KEY`
 
-**B 站 OAuth 说明**：回调地址必须为 HTTPS，本地无法满足。若需完成授权联调，请将服务端部署到具备 HTTPS 的服务器，并参见 [服务器部署与 OAuth 联调](docs/服务器部署与OAuth联调.md)。
+**B 站 OAuth 说明**：回调地址必须为 HTTPS。本仓库采用「服务端在远端运行」的联调模式，服务端部署在具备 HTTPS 的远端服务器，详见 [服务器部署与 OAuth 联调](docs/服务器部署与OAuth联调.md)。
 
 ---
 
-## 客户端已实现功能（联调阶段）
+## 客户端已实现功能
 
-客户端按 [客户端联调实现方案](.cursor/plans/客户端联调实现方案_304a7a99.plan.md) 实现，与当前服务端 REST API 联调，验证认证、OAuth、MAPI、LLM 基本流程；界面从简，技术栈与架构 §7 一致，便于后续升级为精美交互。
+客户端按 [客户端开发文档](prd/5thdoc-2026Feb20-客户端开发文档.md) 与 [客户端开发细节设计计划](.cursor/plans/客户端开发细节设计_d29e9d40.plan.md) 完成样式与布局重设计，采用 Element Plus 风格设计 token，布局为 Header + LeftTab + 主操作两栏（任务列表 + 任务详情/对话）+ StatusBar。
 
 ### 实现方式概览
 
@@ -118,6 +118,12 @@ crates/admiral-server/
 - **凭证**：Rust 侧 `CredentialStore` 抽象，本期实现为明文 JSON 文件；Token 仅存 Rust，前端不持 token，通过 Tauri command 调 `me()` / `license()` 等获取用户信息。
 - **网络**：`ApiClient` 封装全部 REST 调用（auth、oauth、mapi、llm），Bearer 注入与 401 时 refresh 重试在 Command 层统一处理。
 - **Tauri**：Tauri 2 + tauri-plugin-shell；所有命令通过 `tauri_bridge` 注册（含 `open_url` 用于在系统浏览器打开 B 站授权链接）。
+
+### 设计系统
+
+- **色彩**：主色 #409EFF，成功 #67C23A，警告 #E6A23C，危险 #F56C6C，文字层级、边框、背景等 token 定义于 `globals.css`。
+- **布局**：左侧可伸缩 LeftTab（媒体账户 | 任务 | 能力栏），主操作区两栏（任务列表 300px + 任务详情/对话）。
+- **输入**：飞书风格多行 ChatInput，Enter 发送、Shift+Enter 换行。
 
 ### 客户端模块结构
 
@@ -139,11 +145,16 @@ crates/admiral-client/
 ├── ui/                     # React 19 + TypeScript + Vite 6 + Tailwind 4
 │   ├── src/
 │   │   ├── App.tsx、router.tsx
-│   │   ├── components/    # layout（AppShell、Sidebar、Header）、auth（LoginForm）、settings（PlatformAuth）
-│   │   ├── pages/         # HomePage、MapiDebugPage、LlmChatPage
-│   │   ├── stores/        # authStore（完整）、taskStore/wsStore/uiStore（占位）
-│   │   ├── hooks/         # useAuth
-│   │   └── lib/           # tauri.ts（invoke 封装）、types.ts（与 admiral-types 对齐）
+│   │   ├── components/
+│   │   │   ├── layout/     # AppShell、LeftTab、MainContent、Header、StatusBar
+│   │   │   ├── auth/       # LoginForm、InviteCodeInput
+│   │   │   ├── task/       # TaskList、TaskDetail、TaskCreate、TaskTimeline、ConfirmActions
+│   │   │   ├── chat/       # ChatPanel、ChatInput、MessageBubble
+│   │   │   └── settings/   # PlatformAuth、Preferences
+│   │   ├── pages/          # HomePage、SetupPage、AdminPage、MapiDebugPage、LlmChatPage
+│   │   ├── stores/         # authStore、taskStore、uiStore、wsStore
+│   │   ├── hooks/          # useAuth、useTasks、useAgent、useWebSocket
+│   │   └── lib/            # tauri.ts、types.ts
 │   └── ...
 ├── tauri.conf.json
 └── icons/
@@ -154,14 +165,19 @@ crates/admiral-client/
 | 路径 | 说明 |
 |------|------|
 | `/login` | 登录 / 注册（Tab），表单提交后调用 Tauri `login` / `register`，成功跳转首页 |
-| `/` | 首页：AppShell + Sidebar + Header，主区展示 `me()`、`license()` |
-| `/settings/platforms` | B 站授权：发起授权（打开浏览器）、授权列表、绑定账户、取消授权 |
+| `/` | 首页：LeftTab + 任务列表栏 + 任务详情（展示区 + 飞书风格输入区） |
+| `/setup` | 初始化向导：权限申请与平台授权入口 |
+| `/task/new` | 新建任务：任务创建向导 |
+| `/settings` | 设置入口：平台授权、偏好设置、MAPI 调试、LLM 对话、管理 |
+| `/settings/platforms` | B 站授权：发起授权、授权列表、绑定账户、取消授权 |
+| `/settings/preferences` | 偏好设置：主题、语言等（待完善） |
 | `/settings/mapi` | MAPI 调试：填写 account_id、method、path、query/body，发送并展示响应 |
 | `/settings/llm` | LLM 对话：简单对话页，非流式，验证 LLM 代理 |
+| `/admin` | 管理：用户与邀请码管理，仅管理员（Phase 5 接入完整 API） |
 
-### 客户端环境变量（可选）
+### 客户端环境变量
 
-- `ADMIRAL_API_BASE_URL`：服务端 API 地址，默认 `http://127.0.0.1:8080`
+- `ADMIRAL_API_BASE_URL`：**必设**，远端服务端 API 地址（如 `https://admiral.example.com`），联调时客户端连接此地址
 - `ADMIRAL_CREDENTIAL_FILE`：凭证文件路径，默认当前目录 `credentials.json`
 
 ---
@@ -170,38 +186,35 @@ crates/admiral-client/
 
 - Rust 1.85+ (2024 edition)
 - Node.js 20+
-- Docker & Docker Compose
 - macOS 或 Windows（客户端运行环境）
+
+## 开发与联调模式
+
+**服务端**：统一部署并运行在**远端服务器**（如 GCP），本地仅做代码编辑，不部署、不运行。  
+**客户端**：本地运行，通过 `ADMIRAL_API_BASE_URL` 连接远端服务端 API 进行联调。
+
+详细说明见 [联调环境与配置说明](docs/联调环境与配置说明.md)。
 
 ## 快速开始
 
-### 1. 启动数据库
+### 1. 启动客户端（连接远端服务端）
+
+确保远端服务端已部署并运行（参见 [部署到 GCP](docs/部署到GCP-从零到运行.md) 或 [服务器部署与 OAuth 联调](docs/服务器部署与OAuth联调.md)）。
+
+在**仓库根目录**执行：
 
 ```bash
-docker compose up -d
-```
+# 指定远端 API 地址（替换为你的服务端域名）
+export ADMIRAL_API_BASE_URL=https://admiral.example.com
 
-### 2. 配置环境变量
-
-```bash
-cp .env.example .env
-# 编辑 .env 填入 ADMIRAL_DATABASE_URL、JWT 路径等（见上方环境变量）
-```
-
-### 3. 启动服务端
-
-```bash
-cargo run -p admiral-server
-```
-
-（若从仓库根目录运行，配置会从 `crates/admiral-server/config` 或当前目录的 `config/` 加载；也可设置 `ADMIRAL_CONFIG_DIR`。）
-
-### 4. 启动客户端
-
-```bash
-cd crates/admiral-client
 cargo tauri dev
 ```
+
+Tauri 会先在前端目录 `crates/admiral-client/ui` 下执行 `npm run dev`，再启动桌面窗口。客户端将向上述地址发起登录、OAuth、MAPI、LLM 等请求。
+
+### 2. 服务端代码修改与部署
+
+本地修改 `crates/admiral-server/` 下的代码后，通过 Git 推送到远端，在服务器上执行 `git pull` 并重新编译、重启服务端。参见 [DEPLOY-GITHUB](docs/DEPLOY-GITHUB.md)。
 
 ## 开发阶段
 
@@ -214,11 +227,16 @@ cargo tauri dev
 | Phase 4 | 大模型代理（单默认厂商） | 已完成 |
 | 管理端 | 邀请码创建/列表、用户权益延期 | 已完成 |
 | **客户端联调** | 类型共享、CredentialStore、api_client、Tauri 命令、登录/首页/B 站授权/MAPI/LLM 简单 UI | 已完成 |
+| **客户端样式与布局** | 设计系统 token、LeftTab、MainContent 两栏、TaskList/TaskDetail、ChatInput 飞书风格、ConfirmActions、路由补全 | 已完成 |
 | Phase 5 | WebSocket、Agent Runtime、Skill、任务系统、日志闭环 | 待开始 |
 
 ## 文档
 
+- 联调环境与配置说明（服务端远端、客户端本地）：[docs/联调环境与配置说明.md](docs/联调环境与配置说明.md)
+- 服务端部署：[docs/部署到GCP-从零到运行.md](docs/部署到GCP-从零到运行.md)、[docs/服务器部署与OAuth联调.md](docs/服务器部署与OAuth联调.md)、[docs/DEPLOY-GITHUB.md](docs/DEPLOY-GITHUB.md)
 - 服务端开发方案与接口细节：[prd/4thdoc-服务端开发方案.md](prd/4thdoc-服务端开发方案.md)
+- 客户端开发文档（PRD）：[prd/5thdoc-2026Feb20-客户端开发文档.md](prd/5thdoc-2026Feb20-客户端开发文档.md)
+- 客户端开发细节设计计划：[.cursor/plans/客户端开发细节设计_d29e9d40.plan.md](.cursor/plans/客户端开发细节设计_d29e9d40.plan.md)
 - 客户端联调方案（技术栈与未来扩展一致性）：[.cursor/plans/客户端联调实现方案_304a7a99.plan.md](.cursor/plans/客户端联调实现方案_304a7a99.plan.md)
 - 需求与架构：[prd/Admiral_v1_Architecture.md](prd/Admiral_v1_Architecture.md)
 

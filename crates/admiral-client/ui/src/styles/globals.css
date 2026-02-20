@@ -1,6 +1,42 @@
 @import "tailwindcss";
 
+@theme {
+  --color-primary: #409eff;
+  --color-success: #67c23a;
+  --color-warning: #e6a23c;
+  --color-danger: #f56c6c;
+}
+
+:root {
+  --admiral-text-primary: #303133;
+  --admiral-text-secondary: #606266;
+  --admiral-text-placeholder: #909399;
+  --admiral-border: #dcdfe6;
+  --admiral-bg: #f5f7fa;
+  --admiral-card: #ffffff;
+  --admiral-radius-card: 8px;
+  --admiral-radius-button: 6px;
+  --admiral-radius-input: 4px;
+  --admiral-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --admiral-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* 保证整页 flex 布局链不断：Tauri WebView 下必须显式高度 */
+html,
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+  height: 100%;
+  font-family: var(--admiral-font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--admiral-text-primary);
+  background-color: var(--admiral-bg);
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }

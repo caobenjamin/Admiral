@@ -44,10 +44,41 @@ struct BiliTokenData {
     refresh_expires_in: Option<i64>,
 }
 
+/// B 站可能返回 account_role 为数字(如 2)或字符串，account_id 偶为字符串
+fn deserialize_option_flexible<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    Ok(opt.and_then(|v| match v {
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        serde_json::Value::String(s) => Some(s),
+        _ => None,
+    }))
+}
+
+fn deserialize_i64_flexible<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let v = serde_json::Value::deserialize(deserializer)?;
+    match v {
+        serde_json::Value::Number(n) => n
+            .as_i64()
+            .ok_or_else(|| serde::de::Error::custom("invalid number")),
+        serde_json::Value::String(s) => s
+            .parse::<i64>()
+            .map_err(|_| serde::de::Error::custom("invalid account_id string")),
+        _ => Err(serde::de::Error::custom("account_id must be number or string")),
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, Deserialize)]
 pub struct BiliAdvertiserRecord {
+    #[serde(deserialize_with = "deserialize_i64_flexible")]
     pub account_id: i64,
     pub account_name: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_option_flexible")]
     pub account_role: Option<String>,
 }
 
@@ -193,10 +224,14 @@ impl OauthService {
             .send()
             .await
             .map_err(|e| AppError::Upstream(e.to_string()))?;
-        let body: BiliAdvertisersResponse = resp
-            .json()
-            .await
-            .map_err(|e| AppError::Upstream(e.to_string()))?;
+        let text = resp.text().await.map_err(|e| AppError::Upstream(e.to_string()))?;
+        let body: BiliAdvertisersResponse = serde_json::from_str(&text).map_err(|e| {
+            let snippet = text.chars().take(500).collect::<String>();
+            AppError::Upstream(format!(
+                "error decoding response body: {}; body snippet: {}",
+                e, snippet
+            ))
+        })?;
         Ok(body)
     }
 

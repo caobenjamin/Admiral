@@ -38,8 +38,10 @@ impl AuthService {
         company: Option<String>,
         invite_code: String,
     ) -> Result<TokenResponse> {
+        // 邀请码统一按大写匹配，并去掉首尾空格（与生成时格式一致）
+        let code = invite_code.trim().to_uppercase();
         let invite = invite::Entity::find()
-            .filter(invite::Column::Code.eq(invite_code.clone()))
+            .filter(invite::Column::Code.eq(&code))
             .one(&self.db)
             .await?
             .ok_or(AppError::InviteInvalid)?;
