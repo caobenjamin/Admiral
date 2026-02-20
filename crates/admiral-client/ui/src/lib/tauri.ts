@@ -51,6 +51,12 @@ export async function oauthStatus(): Promise<TokenMeta[]> {
   return invoke("oauth_status");
 }
 
+export async function oauthBindingsList(): Promise<
+  import("./types").BoundAccountRecord[]
+> {
+  return invoke("oauth_bindings_list");
+}
+
 export async function oauthAccountsList(oauthSessionId?: string): Promise<OAuthAccountsResponse> {
   return invoke("oauth_accounts_list", { oauthSessionId });
 }

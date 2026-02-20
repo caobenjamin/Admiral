@@ -21,6 +21,7 @@ pub fn app(state: AppState) -> Router {
         .route("/initiate", post(oauth::initiate))
         .route("/callback", get(oauth::callback))
         .route("/status", get(oauth::status))
+        .route("/bindings", get(oauth::bindings_list))
         .route("/accounts", get(oauth::accounts_list))
         .route("/bind-accounts", post(oauth::bind_accounts))
         .route("/sessions/{id}", axum::routing::delete(oauth::delete_session));

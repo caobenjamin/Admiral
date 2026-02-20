@@ -161,6 +161,18 @@ impl ApiClient {
         Ok(out)
     }
 
+    pub async fn oauth_bindings_list(
+        &self,
+        access_token: &str,
+    ) -> Result<Vec<admiral_types::api::BoundAccountRecord>, ApiError> {
+        let path = "/api/v1/oauth/bilibili/bindings";
+        let resp = self
+            .request_with_token(reqwest::Method::GET, path, Some(access_token), None)
+            .await?;
+        let out: Vec<admiral_types::api::BoundAccountRecord> = resp.json().await?;
+        Ok(out)
+    }
+
     pub async fn oauth_accounts_list(
         &self,
         access_token: &str,

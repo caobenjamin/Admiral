@@ -2,7 +2,7 @@
 
 use crate::entities::ad_account_binding;
 use crate::error::{AppError, Result};
-use admiral_types::api::{InitiateResponse, TokenMeta};
+use admiral_types::api::{BoundAccountRecord, InitiateResponse, TokenMeta};
 use crate::service::token_vault::TokenVault;
 use chrono::Utc;
 use moka::future::Cache;
@@ -189,6 +189,30 @@ impl OauthService {
 
     pub async fn status(&self, user_id: Uuid) -> Result<Vec<TokenMeta>> {
         self.vault.list_by_user(user_id).await
+    }
+
+    /// List bound ad accounts for the user (from ad_account_bindings).
+    pub async fn list_bindings(&self, user_id: Uuid) -> Result<Vec<BoundAccountRecord>> {
+        use crate::entities::ad_account_binding;
+        let rows = ad_account_binding::Entity::find()
+            .filter(ad_account_binding::Column::UserId.eq(user_id))
+            .filter(ad_account_binding::Column::Platform.eq("bilibili"))
+            .order_by_asc(ad_account_binding::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+        let out: Vec<BoundAccountRecord> = rows
+            .into_iter()
+            .map(|r| {
+                let account_id = r.account_id.parse().unwrap_or(0_i64);
+                BoundAccountRecord {
+                    account_id,
+                    account_name: r.account_name,
+                    platform: r.platform,
+                    created_at: r.created_at.to_rfc3339(),
+                }
+            })
+            .collect();
+        Ok(out)
     }
 
     pub async fn delete_session(&self, user_id: Uuid, token_id: Uuid) -> Result<bool> {

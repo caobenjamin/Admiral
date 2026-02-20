@@ -67,6 +67,15 @@ pub async fn oauth_status(state: tauri::State<'_, AppState>) -> Result<Vec<Token
 }
 
 #[tauri::command]
+pub async fn oauth_bindings_list(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<admiral_types::api::BoundAccountRecord>, String> {
+    crate::commands::oauth::oauth_bindings_list(&state.auth)
+        .await
+        .map_err(err_string)
+}
+
+#[tauri::command]
 pub async fn oauth_accounts_list(
     state: tauri::State<'_, AppState>,
     oauth_session_id: Option<String>,

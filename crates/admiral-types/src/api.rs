@@ -90,6 +90,15 @@ pub struct BiliAdvertiserRecord {
     pub account_role: Option<String>,
 }
 
+/// 已绑定的广告账户
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BoundAccountRecord {
+    pub account_id: i64,
+    pub account_name: Option<String>,
+    pub platform: String,
+    pub created_at: String,
+}
+
 // ---------- MAPI ----------
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

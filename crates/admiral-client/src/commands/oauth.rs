@@ -3,7 +3,9 @@
 
 use crate::commands::auth::AuthContext;
 use crate::network::api_client::ApiError;
-use admiral_types::api::{BindAccountsRequest, InitiateResponse, OAuthAccountsResponse, TokenMeta};
+use admiral_types::api::{
+    BindAccountsRequest, BoundAccountRecord, InitiateResponse, OAuthAccountsResponse, TokenMeta,
+};
 
 fn get_access_token(ctx: &AuthContext) -> Result<String, ApiError> {
     let cred = ctx.store.get().map_err(|e| ApiError::Credential(e.to_string()))?;
@@ -20,6 +22,13 @@ pub async fn oauth_initiate(ctx: &AuthContext) -> Result<InitiateResponse, ApiEr
 pub async fn oauth_status(ctx: &AuthContext) -> Result<Vec<TokenMeta>, ApiError> {
     let token = get_access_token(ctx)?;
     ctx.api_client.oauth_status(&token).await
+}
+
+pub async fn oauth_bindings_list(
+    ctx: &AuthContext,
+) -> Result<Vec<BoundAccountRecord>, ApiError> {
+    let token = get_access_token(ctx)?;
+    ctx.api_client.oauth_bindings_list(&token).await
 }
 
 pub async fn oauth_accounts_list(

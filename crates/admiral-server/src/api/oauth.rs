@@ -59,6 +59,18 @@ pub async fn status(
     Ok(Json(out))
 }
 
+pub async fn bindings_list(
+    State(state): State<AppState>,
+    auth_user: crate::middleware::auth_guard::AuthUser,
+) -> Result<Json<Vec<admiral_types::api::BoundAccountRecord>>> {
+    let oauth = state
+        .oauth
+        .as_ref()
+        .ok_or(crate::error::AppError::BadRequest("OAuth not configured".into()))?;
+    let out = oauth.list_bindings(auth_user.0).await?;
+    Ok(Json(out))
+}
+
 pub async fn accounts_list(
     State(state): State<AppState>,
     auth_user: crate::middleware::auth_guard::AuthUser,

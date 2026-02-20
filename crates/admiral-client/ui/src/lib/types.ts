@@ -47,3 +47,11 @@ export interface OAuthAccountsResponse {
   records: BiliAdvertiserRecord[];
   total: number;
 }
+
+/** 已绑定的广告账户 */
+export interface BoundAccountRecord {
+  account_id: number;
+  account_name: string | null;
+  platform: string;
+  created_at: string;
+}
