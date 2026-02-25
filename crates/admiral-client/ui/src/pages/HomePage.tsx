@@ -76,15 +76,25 @@ export function HomePage() {
         }}
       >
         <TaskDetail />
+        {/* Agent 对话：独立卡片区块 */}
         <div
           className="mt-4 rounded-lg border p-4"
           style={{
             borderColor: "var(--admiral-border)",
             backgroundColor: "var(--admiral-card)",
             borderRadius: "var(--admiral-radius-card)",
+            boxShadow: "var(--admiral-shadow-card)",
           }}
         >
-          <h4 className="text-sm font-medium text-[var(--admiral-text-primary)] mb-3">Agent 对话</h4>
+          <h3
+            className="text-[var(--admiral-text-primary)]"
+            style={{ fontSize: 14, fontWeight: 600, margin: "0 0 4px 0" }}
+          >
+            Agent 对话
+          </h3>
+          <p className="text-xs text-[var(--admiral-text-secondary)] mb-3" style={{ marginTop: 4 }}>
+            在下方输入自然语言描述任务，或与 Agent 对话
+          </p>
           {messages.length > 0 ? (
             <div className="space-y-2">
               {messages.map((m) => (
@@ -93,7 +103,7 @@ export function HomePage() {
             </div>
           ) : (
             <p className="text-sm text-[var(--admiral-text-placeholder)] py-4">
-              在下方输入自然语言描述任务，或与 Agent 对话
+              暂无对话，在下方输入框发送消息开始
             </p>
           )}
         </div>
@@ -104,6 +114,7 @@ export function HomePage() {
           flexShrink: 0,
           borderTop: "1px solid var(--admiral-border)",
           paddingTop: 16,
+          backgroundColor: "var(--admiral-card)",
         }}
       >
         <ChatInput

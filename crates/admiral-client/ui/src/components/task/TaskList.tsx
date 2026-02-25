@@ -1,7 +1,8 @@
 import { useEffect } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useTaskStore, type TaskMeta, type TaskStatus } from "@/stores/taskStore";
 import { useUiStore } from "@/stores/uiStore";
+import { Button } from "@/components/common/Button";
 
 function taskStatusLabel(s: TaskStatus): string {
   const map: Record<string, string> = {
@@ -51,28 +52,50 @@ function TaskListItem({
       onClick={onSelect}
       role="option"
       aria-selected={selected}
-      className={`block w-full text-left px-3 py-2.5 rounded-lg flex flex-col gap-1.5 transition-colors duration-150 shrink-0 ${
+      className={`block w-full rounded-lg flex flex-col gap-1.5 transition-colors duration-150 shrink-0 ${
         selected
-          ? "bg-[rgba(64,158,255,0.1)] text-[var(--color-primary)]"
-          : "border border-[var(--admiral-border)] bg-[var(--admiral-card)] hover:bg-[rgba(0,0,0,0.04)] hover:border-[var(--admiral-text-secondary)] text-[var(--admiral-text-primary)]"
+          ? "bg-[var(--admiral-task-selected-bg)]"
+          : "border border-[var(--admiral-border)] bg-[var(--admiral-card)] hover:bg-[rgba(0,0,0,0.04)] hover:border-[var(--admiral-text-secondary)]"
       }`}
       style={{
         borderRadius: "var(--admiral-radius-card)",
-        boxShadow: selected ? "0 1px 3px rgba(0,0,0,0.06)" : undefined,
+        padding: "10px 12px",
+        textAlign: "left",
+        alignItems: "flex-start",
         ...(selected ? { borderLeft: "3px solid var(--color-primary)" } : {}),
       }}
     >
-      <div className="flex items-center gap-2">
+      <div
+        className="flex items-center gap-2 w-full min-w-0"
+        style={{ justifyContent: "flex-start", alignSelf: "stretch" }}
+      >
         <span
           className={`h-2 w-2 shrink-0 rounded-full ${taskStatusDot(task.status)}`}
           style={{ borderRadius: "50%" }}
           aria-hidden
         />
-        <span className="flex-1 min-w-0 truncate text-sm font-medium" title={task.name}>
+        <span
+          className="min-w-0 truncate"
+          title={task.name}
+          style={{
+            flex: 1,
+            fontSize: 14,
+            fontWeight: selected ? 600 : 500,
+            color: selected ? "var(--color-primary)" : "var(--admiral-text-primary)",
+            textAlign: "left",
+          }}
+        >
           {task.name || "未命名任务"}
         </span>
       </div>
-      <div className="flex items-center gap-1 pl-4 text-xs text-[var(--admiral-text-secondary)]">
+      <div
+        className="flex items-center gap-1 pl-4 text-xs w-full"
+        style={{
+          color: "var(--admiral-text-secondary)",
+          textAlign: "left",
+          justifyContent: "flex-start",
+        }}
+      >
         <span>{taskStatusLabel(task.status)}</span>
         {task.last_run_result && (
           <>
@@ -96,6 +119,7 @@ function TaskListItem({
 }
 
 export function TaskList() {
+  const navigate = useNavigate();
   const { tasks, fetchTasks } = useTaskStore();
   const { selectedTaskId, setSelectedTaskId } = useUiStore();
 
@@ -110,17 +134,29 @@ export function TaskList() {
       role="listbox"
       aria-label="任务列表"
     >
-      <div className="flex items-center justify-between px-3 py-3 border-b shrink-0" style={{ borderColor: "var(--admiral-border)" }}>
-        <span className="text-sm font-medium text-[var(--admiral-text-primary)]">
-          任务列表
-        </span>
-        <Link
-          to="/task/new"
-          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-[var(--color-primary)] hover:bg-[rgba(64,158,255,0.1)] rounded transition-colors"
-          style={{ borderRadius: "var(--admiral-radius-button)" }}
+      {/* 标题区 + 操作区 */}
+      <div
+        className="flex items-center justify-between shrink-0 border-b px-4 py-3"
+        style={{
+          borderColor: "var(--admiral-border)",
+          backgroundColor: "var(--admiral-bg)",
+        }}
+      >
+        <h3
+          className="text-[var(--admiral-text-primary)]"
+          style={{ fontSize: 14, fontWeight: 600, margin: 0 }}
         >
-          + 新建任务
-        </Link>
+          任务列表
+        </h3>
+        <Button
+          variant="primary"
+          size="small"
+          onClick={() => navigate("/task/new")}
+          className="inline-flex items-center gap-1"
+        >
+          <span aria-hidden>+</span>
+          <span>新建任务</span>
+        </Button>
       </div>
       <div
         className="flex-1 overflow-y-auto p-2 min-h-0"

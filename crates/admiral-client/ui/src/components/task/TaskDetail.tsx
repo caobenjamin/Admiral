@@ -1,9 +1,10 @@
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore, type TaskStatus } from "@/stores/taskStore";
 import { useTasks } from "@/hooks/useTasks";
 import { TaskTimeline } from "./TaskTimeline";
 import { ConfirmActions } from "./ConfirmActions";
+import { Button } from "@/components/common/Button";
 
 function statusLabel(s: TaskStatus): string {
   const map: Record<string, string> = {
@@ -34,26 +35,32 @@ export function TaskDetail() {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const tasks = useTaskStore((s) => s.tasks);
   const task = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : null;
+  const navigate = useNavigate();
+  const { runTestRun, runProduction, refresh } = useTasks();
 
   if (!task) {
     return (
       <div
         className="rounded-lg border p-8 flex flex-col items-center justify-center text-center min-h-[200px]"
-        style={{ borderColor: "var(--admiral-border)", backgroundColor: "var(--admiral-card)", borderRadius: "var(--admiral-radius-card)" }}
+        style={{
+          borderColor: "var(--admiral-border)",
+          backgroundColor: "var(--admiral-card)",
+          borderRadius: "var(--admiral-radius-card)",
+          boxShadow: "var(--admiral-shadow-card)",
+        }}
       >
         <span className="text-2xl mb-4" aria-hidden>📋</span>
         <p className="text-sm text-[var(--admiral-text-secondary)] mb-4">
           在左侧选择任务，或创建新任务
         </p>
-        <Link to="/task/new" className="btn btn-primary inline-flex items-center gap-2">
-          <span>+</span>
+        <Button variant="primary" onClick={() => navigate("/task/new")} className="inline-flex items-center gap-2">
+          <span aria-hidden>+</span>
           <span>新建任务</span>
-        </Link>
+        </Button>
       </div>
     );
   }
 
-  const { runTestRun, runProduction, refresh } = useTasks();
   const showProgress = ["running", "dry_running", "test_running", "succeeded", "failed"].includes(task.status);
   const progressPercent =
     task.status === "succeeded"
@@ -81,11 +88,16 @@ export function TaskDetail() {
 
   return (
     <div
-      className="rounded-lg border p-4 space-y-4"
-      style={{ borderColor: "var(--admiral-border)", backgroundColor: "var(--admiral-card)", borderRadius: "var(--admiral-radius-card)" }}
+      className="rounded-lg border p-4"
+      style={{
+        borderColor: "var(--admiral-border)",
+        backgroundColor: "var(--admiral-card)",
+        borderRadius: "var(--admiral-radius-card)",
+        boxShadow: "var(--admiral-shadow-card)",
+      }}
     >
-      <div>
-        <h2 className="text-base font-semibold text-[var(--admiral-text-primary)]" style={{ fontSize: 16, fontWeight: 600 }}>
+      <div style={{ marginBottom: 16 }}>
+        <h2 className="text-base font-semibold text-[var(--admiral-text-primary)]" style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>
           {task.name || "未命名任务"}
         </h2>
         <p className="text-sm text-[var(--admiral-text-secondary)] mt-0.5">
@@ -93,7 +105,7 @@ export function TaskDetail() {
         </p>
       </div>
       {showProgress && progressPercent > 0 && (
-        <div>
+        <div style={{ marginBottom: 16 }}>
           <div className="flex justify-between items-center gap-2 mb-1">
             <span className="text-xs text-[var(--admiral-text-secondary)]">进度</span>
             <span className="text-xs text-[var(--admiral-text-placeholder)]">{progressPercent}%</span>
@@ -122,7 +134,16 @@ export function TaskDetail() {
           </div>
         </div>
       )}
-      <TaskTimeline />
+      {/* 执行时间线区块 */}
+      <div style={{ marginBottom: 16 }}>
+        <h3
+          className="text-[var(--admiral-text-primary)] mb-2"
+          style={{ fontSize: 14, fontWeight: 600, margin: "0 0 8px 0" }}
+        >
+          执行时间线
+        </h3>
+        <TaskTimeline hideTitle />
+      </div>
       {showConfirmActions && (
         <ConfirmActions
           stage={task.status === "dry_run_passed" ? "dry_run_passed" : "test_run_passed"}

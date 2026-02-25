@@ -14,6 +14,8 @@
   --admiral-border: #dcdfe6;
   --admiral-bg: #f5f7fa;
   --admiral-card: #ffffff;
+  /** 任务列表当前选中项底色，与主色/左侧条协调 */
+  --admiral-task-selected-bg: #e8f4ff;
   --admiral-radius-card: 8px;
   --admiral-radius-button: 4px;
   --admiral-radius-input: 4px;

@@ -13,6 +13,8 @@ export interface TimelineStep {
 
 interface TaskTimelineProps {
   steps?: TimelineStep[];
+  /** 嵌入 TaskDetail 时由父级提供区块标题，不重复显示 */
+  hideTitle?: boolean;
 }
 
 function NodeDot({ status }: { status: TimelineStep["status"] }) {
@@ -48,13 +50,15 @@ function NodeDot({ status }: { status: TimelineStep["status"] }) {
   );
 }
 
-export function TaskTimeline({ steps = [] }: TaskTimelineProps) {
+export function TaskTimeline({ steps = [], hideTitle = false }: TaskTimelineProps) {
   return (
     <div
       className="rounded-lg border p-4"
       style={{ borderColor: "var(--admiral-border)", backgroundColor: "var(--admiral-bg)", borderRadius: "var(--admiral-radius-card)" }}
     >
-      <h4 className="text-sm font-medium text-[var(--admiral-text-primary)] mb-3">执行时间线</h4>
+      {!hideTitle && (
+        <h4 className="text-sm font-medium text-[var(--admiral-text-primary)] mb-3">执行时间线</h4>
+      )}
       {steps.length === 0 ? (
         <p className="text-sm text-[var(--admiral-text-placeholder)]">暂无执行记录</p>
       ) : (
