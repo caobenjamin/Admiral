@@ -1,23 +1,22 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { useUiStore, type ActiveTab } from "@/stores/uiStore";
 import { TaskList } from "@/components/task/TaskList";
 
 function TwoColumnLayout({ children }: { children: React.ReactNode }) {
   const { taskListWidth, setTaskListWidth } = useUiStore();
-  const isDragging = useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
   const startX = useRef(0);
   const startWidth = useRef(0);
 
   useEffect(() => {
+    if (!isDragging) return;
     const onMove = (e: MouseEvent) => {
-      if (!isDragging.current) return;
       const dx = e.clientX - startX.current;
       setTaskListWidth(startWidth.current + dx);
     };
     const onUp = () => {
-      if (!isDragging.current) return;
-      isDragging.current = false;
+      setIsDragging(false);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
@@ -27,12 +26,12 @@ function TwoColumnLayout({ children }: { children: React.ReactNode }) {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
-  }, [setTaskListWidth]);
+  }, [isDragging, setTaskListWidth]);
 
   const onResizeMouseDown = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
-      isDragging.current = true;
+      setIsDragging(true);
       startX.current = e.clientX;
       startWidth.current = taskListWidth;
       document.body.style.cursor = "col-resize";
@@ -72,7 +71,7 @@ function TwoColumnLayout({ children }: { children: React.ReactNode }) {
         role="separator"
         aria-orientation="vertical"
         onMouseDown={onResizeMouseDown}
-        className="resize-handle"
+        className={`resize-handle ${isDragging ? "resize-dragging" : ""}`}
         style={{
           width: 8,
           flexShrink: 0,

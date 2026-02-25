@@ -176,12 +176,7 @@ export function LoginForm() {
               服务端: {serverUrl}
             </p>
           )}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 text-white rounded disabled:opacity-50 bg-[var(--color-primary)] hover:opacity-90 transition-opacity"
-            style={{ borderRadius: "var(--admiral-radius-button)", fontSize: 14, fontWeight: 500 }}
-          >
+          <button type="submit" disabled={loading} className="btn btn-primary w-full btn-large">
             {loading ? "提交中…" : tab === "login" ? "登 录" : "注 册"}
           </button>
         </form>

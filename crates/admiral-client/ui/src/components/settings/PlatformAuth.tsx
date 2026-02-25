@@ -43,11 +43,12 @@ function ConfirmUnbindDialog({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "rgba(0,0,0,0.4)",
+        backgroundColor: "rgba(0,0,0,0.3)",
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
+        className="admiral-dialog-content"
         style={{
           backgroundColor: "var(--admiral-card)",
           border: "1px solid var(--admiral-border)",
@@ -82,35 +83,10 @@ function ConfirmUnbindDialog({
             gap: 12,
           }}
         >
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: "8px 16px",
-              fontSize: 14,
-              borderRadius: "var(--admiral-radius-button)",
-              border: "1px solid var(--admiral-border)",
-              backgroundColor: "var(--admiral-card)",
-              color: "var(--admiral-text-primary)",
-              cursor: "pointer",
-            }}
-          >
+          <button type="button" onClick={onClose} className="btn btn-default">
             取消
           </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            style={{
-              padding: "8px 16px",
-              fontSize: 14,
-              fontWeight: 500,
-              borderRadius: "var(--admiral-radius-button)",
-              border: "none",
-              backgroundColor: "var(--color-danger)",
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
+          <button type="button" onClick={onConfirm} className="btn btn-danger">
             确认解绑
           </button>
         </div>
@@ -217,11 +193,12 @@ function BindAccountModal({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "rgba(0,0,0,0.4)",
+        backgroundColor: "rgba(0,0,0,0.3)",
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
+        className="admiral-dialog-content"
         style={{
           ...cardStyle,
           width: "min(90vw, 560px)",
@@ -380,19 +357,7 @@ function BindAccountModal({
             gap: 12,
           }}
         >
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: "8px 16px",
-              fontSize: 14,
-              borderRadius: "var(--admiral-radius-button)",
-              border: "1px solid var(--admiral-border)",
-              backgroundColor: "var(--admiral-card)",
-              color: "var(--admiral-text-primary)",
-              cursor: "pointer",
-            }}
-          >
+          <button type="button" onClick={onClose} className="btn btn-default">
             取消
           </button>
           {oauthSessionId &&
@@ -402,22 +367,7 @@ function BindAccountModal({
                 type="button"
                 onClick={handleBind}
                 disabled={bindLoading || selectedAccountIds.length === 0}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: 14,
-                  fontWeight: 500,
-                  borderRadius: "var(--admiral-radius-button)",
-                  border: "none",
-                  backgroundColor:
-                    bindLoading || selectedAccountIds.length === 0
-                      ? "var(--admiral-border)"
-                      : "var(--color-primary)",
-                  color: "#fff",
-                  cursor:
-                    bindLoading || selectedAccountIds.length === 0
-                      ? "not-allowed"
-                      : "pointer",
-                }}
+                className="btn btn-primary"
               >
                 {bindLoading ? "保存中…" : `保存 (${selectedAccountIds.length})`}
               </button>
@@ -629,16 +579,7 @@ export function PlatformAuth() {
                 setAddAccountDropdownOpen(!addAccountDropdownOpen);
               }}
               disabled={status.length === 0}
-              style={{
-                padding: "8px 16px",
-                fontSize: 14,
-                fontWeight: 500,
-                borderRadius: "var(--admiral-radius-button)",
-                border: "1px solid var(--admiral-border)",
-                backgroundColor: "var(--admiral-card)",
-                color: status.length === 0 ? "var(--admiral-text-placeholder)" : "var(--admiral-text-primary)",
-                cursor: status.length === 0 ? "not-allowed" : "pointer",
-              }}
+              className="btn btn-default"
             >
               新增账户 ▾
             </button>
@@ -681,19 +622,7 @@ export function PlatformAuth() {
               </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={handleInitiate}
-            style={{
-              padding: "8px 16px",
-              fontSize: 14,
-              borderRadius: "var(--admiral-radius-button)",
-              border: "1px solid var(--admiral-border)",
-              backgroundColor: "var(--admiral-card)",
-              color: "var(--admiral-text-primary)",
-              cursor: "pointer",
-            }}
-          >
+          <button type="button" onClick={handleInitiate} className="btn btn-default">
             新增授权
           </button>
         </div>

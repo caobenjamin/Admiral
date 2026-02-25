@@ -60,12 +60,7 @@ export function LlmChatPage() {
           placeholder="输入消息..."
           className="border rounded px-3 py-2 flex-1"
         />
-        <button
-          type="button"
-          onClick={handleSend}
-          disabled={loading}
-          className="rounded border px-4 py-2 bg-blue-600 text-white disabled:opacity-50"
-        >
+        <button type="button" onClick={handleSend} disabled={loading} className="btn btn-primary">
           {loading ? "..." : "发送"}
         </button>
       </div>

@@ -289,4 +289,34 @@ impl ApiClient {
         let bytes = resp.bytes().await?.to_vec();
         Ok(bytes)
     }
+
+    // ---------- Knowledge (RAG) ----------
+
+    pub async fn knowledge_query(
+        &self,
+        access_token: &str,
+        query: &str,
+        top_k: usize,
+    ) -> Result<Vec<KnowledgeSnippet>, ApiError> {
+        let path = "/api/v1/knowledge/query";
+        let body = serde_json::json!({ "query": query, "top_k": top_k });
+        let resp = self
+            .request_with_token(reqwest::Method::POST, path, Some(access_token), Some(body))
+            .await?;
+        let out: KnowledgeQueryResponse = resp.json().await?;
+        Ok(out.snippets)
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct KnowledgeQueryResponse {
+    snippets: Vec<KnowledgeSnippet>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct KnowledgeSnippet {
+    pub content: String,
+    pub source_file: String,
+    #[serde(default)]
+    pub title: Option<String>,
 }

@@ -4,12 +4,20 @@ use crate::commands::auth::{self, AuthContext};
 use crate::config::ClientConfig;
 use crate::credential::PlainFileCredentialStore;
 use crate::network::api_client::ApiClient;
+use crate::agent::runtime::{AgentResponse, AgentRuntime};
+use crate::agent::context::Session;
+use crate::skill::registry::SkillRegistry;
+use crate::task::engine::TaskEngine;
 use admiral_types::api::*;
+use admiral_types::task::{Task, TaskStatus, TaskType};
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// App state held by Tauri (thread-safe).
 pub struct AppState {
     pub auth: Arc<AuthContext>,
+    pub task_engine: Arc<TaskEngine>,
+    pub agent_runtime: Arc<tokio::sync::RwLock<Option<AgentRuntime>>>,
 }
 
 fn err_string(e: impl std::fmt::Display) -> String {
@@ -173,13 +181,125 @@ pub fn set_server_url(url: String) -> Result<(), String> {
     config.save().map_err(|e| e.to_string())
 }
 
+// ---------- Task commands ----------
+
+#[tauri::command]
+pub async fn task_create(
+    state: tauri::State<'_, AppState>,
+    name: String,
+    description: Option<String>,
+    task_type: TaskType,
+) -> Result<Task, String> {
+    crate::commands::task::create_task(
+        state.task_engine.as_ref(),
+        name,
+        description,
+        task_type,
+    )
+}
+
+#[tauri::command]
+pub async fn task_list(
+    state: tauri::State<'_, AppState>,
+    status_filter: Option<TaskStatus>,
+) -> Result<Vec<Task>, String> {
+    crate::commands::task::list_tasks(state.task_engine.as_ref(), status_filter)
+}
+
+#[tauri::command]
+pub async fn task_get(state: tauri::State<'_, AppState>, id: String) -> Result<Option<Task>, String> {
+    let id = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    crate::commands::task::get_task(state.task_engine.as_ref(), id)
+}
+
+#[tauri::command]
+pub async fn task_run_dry_run(
+    state: tauri::State<'_, AppState>,
+    task_id: String,
+) -> Result<admiral_types::task::TaskRun, String> {
+    let id = Uuid::parse_str(&task_id).map_err(|e| e.to_string())?;
+    crate::commands::task::run_dry_run(
+        state.task_engine.as_ref(),
+        state.auth.as_ref(),
+        id,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn task_run_test_run(
+    state: tauri::State<'_, AppState>,
+    task_id: String,
+) -> Result<admiral_types::task::TaskRun, String> {
+    let id = Uuid::parse_str(&task_id).map_err(|e| e.to_string())?;
+    crate::commands::task::run_test_run(
+        state.task_engine.as_ref(),
+        state.auth.as_ref(),
+        id,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn agent_chat(
+    state: tauri::State<'_, AppState>,
+    message: String,
+    task_id: Option<String>,
+) -> Result<AgentResponse, String> {
+    let token = state.auth.get_access_token().map_err(|e| e.to_string())?;
+    let session = Session {
+        id: uuid::Uuid::new_v4().to_string(),
+        task_id: task_id.and_then(|s| uuid::Uuid::parse_str(&s).ok()),
+        messages: Vec::new(),
+    };
+    let guard = state.agent_runtime.write().await;
+    let runtime = guard.as_ref().ok_or("Agent not initialized")?;
+    runtime
+        .process_message(session, &message, Some(&token))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn task_run_production(
+    state: tauri::State<'_, AppState>,
+    task_id: String,
+) -> Result<admiral_types::task::TaskRun, String> {
+    let id = Uuid::parse_str(&task_id).map_err(|e| e.to_string())?;
+    crate::commands::task::run_production(
+        state.task_engine.as_ref(),
+        state.auth.as_ref(),
+        id,
+    )
+    .await
+}
+
 /// Create AppState from config (used at startup).
 pub fn create_app_state() -> AppState {
     let config = ClientConfig::from_env();
     let store = Arc::new(PlainFileCredentialStore::from_config(&config));
-    let api_client = ApiClient::new(config.api_base_url);
-    let auth = AuthContext::new(api_client, store);
+    let api_client = Arc::new(ApiClient::new(config.api_base_url));
+    let auth = AuthContext::new(Arc::clone(&api_client), store);
+
+    let skill_registry = Arc::new(SkillRegistry::new());
+    let _ = skill_registry.load_from_default_dir();
+    let skill_executor = Arc::new(crate::skill::executor::SkillExecutor::new(
+        Arc::clone(&skill_registry),
+        api_client,
+    ));
+    let task_engine = Arc::new(TaskEngine::new(
+        Arc::clone(&skill_registry),
+        skill_executor,
+    ));
+
+    let agent_runtime = match AgentRuntime::new(Arc::clone(&auth.api_client), Arc::clone(&skill_registry)) {
+        Ok(r) => Arc::new(tokio::sync::RwLock::new(Some(r))),
+        Err(_) => Arc::new(tokio::sync::RwLock::new(None)),
+    };
+
     AppState {
         auth: Arc::new(auth),
+        task_engine,
+        agent_runtime,
     }
 }

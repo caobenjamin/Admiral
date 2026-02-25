@@ -159,22 +159,35 @@ cargo run -p admiral-server
 - **布局**：左侧可伸缩 LeftTab（媒体账户 | 任务 | 能力栏），主操作区两栏（任务列表 300px + 任务详情/对话）。
 - **输入**：飞书风格多行 ChatInput，Enter 发送、Shift+Enter 换行。
 
+### 任务系统（Agent + Skill + Task Engine）
+
+基于 [6th-任务系统](prd/6th-任务系统.md) 与 OpenClaw 思路实现的完整任务系统已落地，包含：
+
+- **记忆系统**：`~/.admiral/memory/` 下 USER_MEMORY.md、每日/任务记忆，SQLite FTS5 检索
+- **Skill 工具体系**：`skills/` 目录 skill.toml 解析，Registry/Validator/Executor，MAPI 类走服务端代理
+- **Agent Runtime**：Profile、Context 组装、ReAct 循环，LLM tool_call → Skill 执行 → 结果回传
+- **任务引擎**：状态机、DryRun/TestRun/生产执行、Scheduler（心跳），SQLite 持久化
+- **Knowledge RAG**：服务端 `/api/v1/knowledge/query` 与客户端调用（当前为桩，可扩展向量检索）
+- **前端**：任务列表/创建/详情、ConfirmActions 执行 DryRun/TestRun/生产，首页 Agent 对话接 `agent_chat`
+
+详细实现说明见 **[任务系统实现报告](docs/任务系统实现报告.md)**。
+
 ### 客户端模块结构
 
 ```
 crates/admiral-client/
 ├── src/
-│   ├── main.rs             # Tauri 入口，注册命令与 AppState
+│   ├── main.rs             # Tauri 入口，注册命令与 AppState、迁移与 AppState 初始化
 │   ├── config.rs           # ClientConfig（base_url、credential_path）
 │   ├── credential.rs       # CredentialStore trait、PlainFileCredentialStore、StoredCredential
-│   ├── tauri_bridge.rs     # AppState、Tauri command 桥（auth_*、oauth_*、mapi_proxy、llm_chat、open_url）
-│   ├── commands/           # 业务命令（调用 api_client + CredentialStore）
-│   │   ├── auth.rs         # register、login、refresh、logout、me、license
-│   │   ├── oauth.rs        # oauth_initiate、status、accounts_list、bind_accounts、delete_session
-│   │   ├── mapi.rs         # mapi_proxy
-│   │   └── llm.rs          # llm_chat
+│   ├── tauri_bridge.rs     # AppState、Tauri command 桥（auth、oauth、mapi、llm、task_*、agent_chat、open_url）
+│   ├── commands/           # 业务命令（auth、oauth、mapi、llm、task）
 │   ├── network/
-│   │   └── api_client.rs   # REST 客户端（auth、oauth、mapi、llm）
+│   │   └── api_client.rs   # REST 客户端（auth、oauth、mapi、llm、knowledge_query）
+│   ├── db/                 # SQLite 迁移与 models（tasks、task_runs、conversations、memory、logs）
+│   ├── agent/              # profile、memory、context、runtime（ReAct + tool_call）
+│   ├── skill/              # loader、registry、validator、executor
+│   ├── task/               # state_machine、executor、engine、scheduler
 │   └── ...
 ├── ui/                     # React 19 + TypeScript + Vite 6 + Tailwind 4
 │   ├── src/
@@ -231,6 +244,8 @@ crates/admiral-client/
 
 ## 快速开始
 
+**服务端在远端、本机只跑客户端**时，需要先初始化远端服务端（数据库、.env、JWT、可选 B 站 OAuth / LLM），再在本机设 `ADMIRAL_API_BASE_URL` 并启动客户端。**完整步骤与自检清单**见 **[开始运行：服务端远端与客户端本机](docs/开始运行-服务端远端与客户端本机.md)**。
+
 ### 1. 启动客户端（连接远端服务端）
 
 确保远端服务端已部署并运行（参见 [部署到 GCP](docs/部署到GCP-从零到运行.md) 或 [服务器部署与 OAuth 联调](docs/服务器部署与OAuth联调.md)）。
@@ -244,7 +259,7 @@ export ADMIRAL_API_BASE_URL=https://admiral.example.com
 cargo tauri dev
 ```
 
-Tauri 会先在前端目录 `crates/admiral-client/ui` 下执行 `npm run dev`，再启动桌面窗口。客户端将向上述地址发起登录、OAuth、MAPI、LLM 等请求。
+Tauri 会先在前端目录 `crates/admiral-client/ui` 下执行 `npm run dev`，再启动桌面窗口。客户端将向上述地址发起登录、OAuth、MAPI、LLM 等请求。**凭证文件、本地 SQLite、记忆目录**无需事先创建，首次登录与使用时会自动初始化。
 
 ### 2. 服务端代码修改与部署
 
@@ -262,10 +277,14 @@ Tauri 会先在前端目录 `crates/admiral-client/ui` 下执行 `npm run dev`�
 | 管理端 | 邀请码创建/列表、用户权益延期 | 已完成 |
 | **客户端联调** | 类型共享、CredentialStore、api_client、Tauri 命令、登录/首页/B 站授权/MAPI/LLM 简单 UI | 已完成 |
 | **客户端样式与布局** | 设计系统 token、LeftTab、MainContent 两栏、TaskList/TaskDetail、ChatInput 飞书风格、ConfirmActions、路由补全 | 已完成 |
-| Phase 5 | WebSocket、Agent Runtime、Skill、任务系统、日志闭环 | 待开始 |
+| **任务系统（Phase 5 核心）** | 记忆系统（MD+FTS5）、Skill 工具体系、Agent Runtime（ReAct+tool_call）、任务状态机与 DryRun/TestRun/执行、Knowledge RAG 桩、前端任务/对话 UI 联通 | 已完成 |
+| Phase 5 其余 | WebSocket、日志闭环、Heartbeat 配置 UI 等 | 待开始 |
 
 ## 文档
 
+- **开始运行**（服务端远端 + 客户端本机：初始化步骤与自检清单）：[docs/开始运行-服务端远端与客户端本机.md](docs/开始运行-服务端远端与客户端本机.md)
+- **知识库初始化**（Markdown 目录、管理员 ingest API、全文检索）：[docs/知识库初始化.md](docs/知识库初始化.md)
+- **任务系统实现报告**（记忆/Skill/Agent/任务引擎/RAG/前端对接）：[docs/任务系统实现报告.md](docs/任务系统实现报告.md)
 - 联调环境与配置说明（服务端远端、客户端本地）：[docs/联调环境与配置说明.md](docs/联调环境与配置说明.md)
 - 服务端部署：[docs/部署到GCP-从零到运行.md](docs/部署到GCP-从零到运行.md)、[docs/服务器部署与OAuth联调.md](docs/服务器部署与OAuth联调.md)、[docs/DEPLOY-GITHUB.md](docs/DEPLOY-GITHUB.md)
 - 服务端开发方案与接口细节：[prd/4thdoc-服务端开发方案.md](prd/4thdoc-服务端开发方案.md)

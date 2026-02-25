@@ -73,7 +73,7 @@ export function LeftTab() {
     textAlign: "left",
     fontSize: 14,
     border: "none",
-    borderRadius: 8,
+    borderRadius: "var(--admiral-radius-button)",
     cursor: disabled ? "not-allowed" : "pointer",
     backgroundColor: active ? "rgba(64, 158, 255, 0.1)" : "transparent",
     color: active ? "var(--color-primary)" : "var(--admiral-text-primary)",
@@ -110,13 +110,13 @@ export function LeftTab() {
           type="button"
           onClick={handleMediaClick}
           style={baseBtnStyle(activeTab === "media")}
-          title={leftTabCollapsed ? "授权管理" : undefined}
+          title={leftTabCollapsed ? "媒体账户" : undefined}
           className={`left-tab-item ${activeTab === "media" ? "left-tab-active" : ""}`}
         >
           <MediaIcon />
           {!leftTabCollapsed && (
             <div style={{ minWidth: 0, flex: 1 }}>
-              <span style={{ display: "block", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>授权管理</span>
+              <span style={{ display: "block", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>媒体账户</span>
               <span
                 style={{
                   display: "block",
@@ -167,7 +167,7 @@ export function LeftTab() {
           margin: "0 8px 8px",
           padding: 8,
           border: "none",
-          borderRadius: 8,
+          borderRadius: "var(--admiral-radius-button)",
           backgroundColor: "transparent",
           color: "var(--admiral-text-secondary)",
           cursor: "pointer",

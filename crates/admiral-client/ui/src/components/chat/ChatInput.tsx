@@ -44,10 +44,10 @@ export function ChatInput({
 
   return (
     <div
-      className="flex gap-2 items-end p-3 rounded-lg border transition-colors focus-within:ring-2 focus-within:ring-primary/30"
+      className="chat-input-focus flex gap-2 items-end p-3 rounded-lg border transition-[border-color,box-shadow] duration-150"
       style={{
         borderColor: "var(--admiral-border)",
-        borderRadius: "var(--admiral-radius-card)",
+        borderRadius: 8,
       }}
     >
       <textarea
@@ -69,8 +69,7 @@ export function ChatInput({
         type="button"
         onClick={handleSubmit}
         disabled={disabled || loading || !value.trim()}
-        className="shrink-0 px-4 py-2 text-sm font-medium text-white rounded-md bg-primary hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-        style={{ borderRadius: "var(--admiral-radius-button)" }}
+        className="btn btn-primary shrink-0"
       >
         {loading ? "发送中…" : "发送"}
       </button>

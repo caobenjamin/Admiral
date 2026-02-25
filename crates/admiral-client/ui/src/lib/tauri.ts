@@ -103,3 +103,40 @@ export async function getServerUrl(): Promise<string> {
 export async function getConfigPath(): Promise<string | null> {
   return invoke("get_config_path");
 }
+
+// ---------- Task ----------
+export async function taskCreate(
+  name: string,
+  description?: string | null,
+  taskType: import("./types").TaskType = "instant"
+): Promise<import("./types").Task> {
+  return invoke("task_create", { name, description, taskType });
+}
+
+export async function taskList(statusFilter?: import("./types").TaskStatus | null): Promise<import("./types").Task[]> {
+  return invoke("task_list", { statusFilter: statusFilter ?? null });
+}
+
+export async function taskGet(id: string): Promise<import("./types").Task | null> {
+  return invoke("task_get", { id });
+}
+
+export async function taskRunDryRun(taskId: string): Promise<import("./types").TaskRun> {
+  return invoke("task_run_dry_run", { taskId });
+}
+
+export async function taskRunTestRun(taskId: string): Promise<import("./types").TaskRun> {
+  return invoke("task_run_test_run", { taskId });
+}
+
+export async function taskRunProduction(taskId: string): Promise<import("./types").TaskRun> {
+  return invoke("task_run_production", { taskId });
+}
+
+// ---------- Agent ----------
+export async function agentChat(
+  message: string,
+  taskId?: string | null
+): Promise<import("./types").AgentResponse> {
+  return invoke("agent_chat", { message, taskId: taskId ?? null });
+}

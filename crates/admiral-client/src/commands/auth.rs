@@ -12,13 +12,19 @@ fn store_err(e: CredentialError) -> ApiError {
 
 /// Context for auth commands: API client and credential store.
 pub struct AuthContext {
-    pub api_client: ApiClient,
+    pub api_client: Arc<ApiClient>,
     pub store: Arc<dyn CredentialStore>,
 }
 
 impl AuthContext {
-    pub fn new(api_client: ApiClient, store: Arc<dyn CredentialStore>) -> Self {
+    pub fn new(api_client: Arc<ApiClient>, store: Arc<dyn CredentialStore>) -> Self {
         Self { api_client, store }
+    }
+
+    /// Get current access token for API calls. Returns error if not logged in.
+    pub fn get_access_token(&self) -> Result<String, ApiError> {
+        let cred = self.store.get().map_err(|e| ApiError::Credential(e.to_string()))?;
+        cred.ok_or(ApiError::Unauthorized).map(|c| c.access_token)
     }
 }
 

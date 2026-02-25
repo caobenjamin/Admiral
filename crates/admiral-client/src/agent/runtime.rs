@@ -1,3 +1,226 @@
-// Agent core interaction loop (ReAct pattern)
-// Context assembly → LLM call → tool execution → result feedback
-// TODO: implement in Phase 3
+//! Agent core interaction loop (ReAct): context assembly, LLM call, tool execution, result feedback.
+
+use crate::agent::context::{ContextAssembler, Message, Session};
+use crate::agent::memory::MemoryStore;
+use crate::agent::profile;
+use crate::network::api_client::ApiClient;
+use admiral_types::api::LlmChatRequest;
+use admiral_types::skill::{SkillCall, SkillResult};
+use serde_json::{json, Value};
+use std::sync::Arc;
+
+/// Response from one agent turn (final text and optional tool calls made).
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct AgentResponse {
+    pub content: String,
+    pub tool_calls_used: Vec<(String, SkillResult)>,
+    pub session: Session,
+}
+
+/// Agent runtime: owns profile, memory, context assembler, and uses external API client + skill executor.
+pub struct AgentRuntime {
+    profile: crate::agent::profile::AgentProfile,
+    memory: MemoryStore,
+    context: ContextAssembler,
+    api_client: Arc<ApiClient>,
+    skill_executor: Arc<crate::skill::executor::SkillExecutor>,
+}
+
+impl AgentRuntime {
+    pub fn new(
+        api_client: Arc<ApiClient>,
+        skill_registry: Arc<crate::skill::registry::SkillRegistry>,
+    ) -> anyhow::Result<Self> {
+        let profile = profile::load_profile();
+        let memory = MemoryStore::new().map_err(|e| anyhow::anyhow!("memory: {}", e))?;
+        let context = ContextAssembler::new(profile.clone(), memory.clone(), skill_registry.clone());
+        let skill_executor = Arc::new(crate::skill::executor::SkillExecutor::new(
+            skill_registry,
+            api_client.clone(),
+        ));
+        Ok(Self {
+            profile,
+            memory,
+            context,
+            api_client,
+            skill_executor,
+        })
+    }
+
+    /// Process one user message: build context, call LLM, execute tool_calls until done, return final response.
+    pub async fn process_message(
+        &self,
+        mut session: Session,
+        user_message: &str,
+        access_token: Option<&str>,
+    ) -> Result<AgentResponse, anyhow::Error> {
+        session.messages.push(Message {
+            role: "user".to_string(),
+            content: Some(user_message.to_string()),
+            tool_calls: None,
+            name: None,
+            tool_call_id: None,
+        });
+
+        let knowledge_snippets: Vec<String> = if let Some(token) = access_token {
+            self.api_client
+                .knowledge_query(token, user_message, 5)
+                .await
+                .map(|s| s.into_iter().map(|k| k.content).collect())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+
+        let mut current_session = session;
+        let mut tool_calls_used: Vec<(String, SkillResult)> = Vec::new();
+        let max_turns = 10;
+        let mut turn = 0;
+
+        loop {
+            turn += 1;
+            if turn > max_turns {
+                break Ok(AgentResponse {
+                    content: "达到最大轮次，请简化请求。".to_string(),
+                    tool_calls_used,
+                    session: current_session,
+                });
+            }
+
+            let messages = self.context.build(
+                &current_session,
+                user_message,
+                &knowledge_snippets,
+            );
+
+            let req = LlmChatRequest {
+                messages,
+                stream: false,
+                model: self.profile.default_model.clone(),
+                max_tokens: Some(4096),
+            };
+
+            let token = access_token.ok_or_else(|| anyhow::anyhow!("access_token required for LLM"))?;
+            let bytes = self
+                .api_client
+                .llm_chat(token, &req)
+                .await
+                .map_err(|e| anyhow::anyhow!("llm_chat: {}", e))?;
+
+            let resp: Value = serde_json::from_slice(&bytes)
+                .map_err(|e| anyhow::anyhow!("parse LLM response: {}", e))?;
+
+            let choice = resp
+                .get("choices")
+                .and_then(|c| c.get(0))
+                .and_then(|c| c.get("message"));
+            let message = match choice {
+                Some(m) => m,
+                None => {
+                    let content = resp
+                        .get("error")
+                        .and_then(|e| e.get("message"))
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("LLM returned no choices");
+                    break Ok(AgentResponse {
+                        content: content.to_string(),
+                        tool_calls_used,
+                        session: current_session,
+                    });
+                }
+            };
+
+            let content = message
+                .get("content")
+                .and_then(|c| c.as_str())
+                .unwrap_or("")
+                .to_string();
+            let tool_calls = message.get("tool_calls").and_then(|t| t.as_array());
+
+            current_session.messages.push(Message {
+                role: "assistant".to_string(),
+                content: if content.is_empty() { None } else { Some(content.clone()) },
+                tool_calls: message.get("tool_calls").cloned(),
+                name: None,
+                tool_call_id: None,
+            });
+
+            if tool_calls.is_none() || tool_calls.as_ref().map(|a| a.is_empty()).unwrap_or(true) {
+                break Ok(AgentResponse {
+                    content,
+                    tool_calls_used,
+                    session: current_session,
+                });
+            }
+
+            let tool_calls = tool_calls.unwrap();
+            for tc in tool_calls {
+                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                let func = tc.get("function").ok_or_else(|| anyhow::anyhow!("tool_call missing function"))?;
+                let name = func.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let args_str = func.get("arguments").and_then(|v| v.as_str()).unwrap_or("{}");
+                let params: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
+
+                let skill_id = resolve_tool_name_to_skill_id(name, self.context.skill_registry.as_ref());
+                let skill_id = match skill_id {
+                    Some(s) => s,
+                    None => {
+                        current_session.messages.push(Message {
+                            role: "tool".to_string(),
+                            content: Some(format!("error: unknown tool {}", name)),
+                            tool_calls: None,
+                            name: Some(name.to_string()),
+                            tool_call_id: Some(id.to_string()),
+                        });
+                        continue;
+                    }
+                };
+
+                let account_id = params.get("account_id").and_then(|v| v.as_i64());
+                let call = SkillCall {
+                    skill_id: skill_id.clone(),
+                    params,
+                    account_id,
+                    dry_run: false,
+                };
+
+                let result = self
+                    .skill_executor
+                    .execute(call, access_token)
+                    .await
+                    .unwrap_or_else(|e| SkillResult::err(e.to_string(), None));
+
+                tool_calls_used.push((skill_id, result.clone()));
+
+                let result_content = if result.success {
+                    serde_json::to_string(&result.data).unwrap_or_else(|_| "{}".to_string())
+                } else {
+                    result.error.unwrap_or_else(|| "unknown error".to_string())
+                };
+
+                current_session.messages.push(Message {
+                    role: "tool".to_string(),
+                    content: Some(result_content),
+                    tool_calls: None,
+                    name: Some(name.to_string()),
+                    tool_call_id: Some(id.to_string()),
+                });
+            }
+        }
+    }
+}
+
+fn resolve_tool_name_to_skill_id(name: &str, registry: &crate::skill::registry::SkillRegistry) -> Option<String> {
+    for def in registry.list() {
+        if let Some(ref t) = def.llm_tool {
+            if t.name == name {
+                return Some(def.id.clone());
+            }
+        }
+    }
+    let normalized = name.replace('_', ".");
+    if registry.get(&normalized).is_some() {
+        return Some(normalized);
+    }
+    None
+}

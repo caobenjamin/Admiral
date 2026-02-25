@@ -15,10 +15,299 @@
   --admiral-bg: #f5f7fa;
   --admiral-card: #ffffff;
   --admiral-radius-card: 8px;
-  --admiral-radius-button: 6px;
+  --admiral-radius-button: 4px;
   --admiral-radius-input: 4px;
   --admiral-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
   --admiral-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Element 风格按钮变量 */
+  --btn-height-default: 32px;
+  --btn-height-large: 40px;
+  --btn-height-small: 24px;
+  --btn-padding-x-default: 15px;
+  --btn-padding-x-large: 19px;
+  --btn-padding-x-small: 11px;
+  --btn-font-size-default: 14px;
+  --btn-font-size-large: 14px;
+  --btn-font-size-small: 12px;
+  --btn-font-weight: 500;
+  --btn-border-width: 1px;
+  --btn-outline-color: rgba(64, 158, 255, 0.5);
+  /* default */
+  --btn-default-bg: #ffffff;
+  --btn-default-border: #dcdfe6;
+  --btn-default-text: #606266;
+  --btn-default-hover-bg: #ecf5ff;
+  --btn-default-hover-border: #c6e2ff;
+  --btn-default-hover-text: #409eff;
+  --btn-default-active-bg: #d9ecff;
+  --btn-default-active-border: #409eff;
+  --btn-default-active-text: #3a8ee6;
+  --btn-default-disabled-bg: #ffffff;
+  --btn-default-disabled-border: #e4e7ed;
+  --btn-default-disabled-text: #a8abb2;
+  /* primary */
+  --btn-primary-bg: #409eff;
+  --btn-primary-border: #409eff;
+  --btn-primary-text: #ffffff;
+  --btn-primary-hover-bg: #66b1ff;
+  --btn-primary-hover-border: #66b1ff;
+  --btn-primary-hover-text: #ffffff;
+  --btn-primary-active-bg: #3a8ee6;
+  --btn-primary-active-border: #3a8ee6;
+  --btn-primary-active-text: #ffffff;
+  --btn-primary-disabled-bg: #a0cfff;
+  --btn-primary-disabled-border: #a0cfff;
+  --btn-primary-disabled-text: #ffffff;
+  /* success */
+  --btn-success-bg: #67c23a;
+  --btn-success-border: #67c23a;
+  --btn-success-text: #ffffff;
+  --btn-success-hover-bg: #85ce61;
+  --btn-success-hover-border: #85ce61;
+  --btn-success-active-bg: #5daf34;
+  --btn-success-active-border: #5daf34;
+  --btn-success-disabled-bg: #b3e19d;
+  --btn-success-disabled-border: #b3e19d;
+  --btn-success-disabled-text: #ffffff;
+  /* warning */
+  --btn-warning-bg: #e6a23c;
+  --btn-warning-border: #e6a23c;
+  --btn-warning-text: #ffffff;
+  --btn-warning-hover-bg: #ebb563;
+  --btn-warning-hover-border: #ebb563;
+  --btn-warning-active-bg: #cf9236;
+  --btn-warning-active-border: #cf9236;
+  --btn-warning-disabled-bg: #f3d19e;
+  --btn-warning-disabled-border: #f3d19e;
+  --btn-warning-disabled-text: #ffffff;
+  /* danger */
+  --btn-danger-bg: #f56c6c;
+  --btn-danger-border: #f56c6c;
+  --btn-danger-text: #ffffff;
+  --btn-danger-hover-bg: #f78989;
+  --btn-danger-hover-border: #f78989;
+  --btn-danger-active-bg: #dd6161;
+  --btn-danger-active-border: #dd6161;
+  --btn-danger-disabled-bg: #fab6b6;
+  --btn-danger-disabled-border: #fab6b6;
+  --btn-danger-disabled-text: #ffffff;
+}
+
+/* ========== Element 风格按钮（.btn 为基类） ========== */
+.btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  height: var(--btn-height-default);
+  padding: 0 calc(var(--btn-padding-x-default) - var(--btn-border-width));
+  font-family: var(--admiral-font-sans);
+  font-size: var(--btn-font-size-default);
+  font-weight: var(--btn-font-weight);
+  line-height: 1;
+  white-space: nowrap;
+  text-align: center;
+  vertical-align: middle;
+  cursor: pointer;
+  user-select: none;
+  text-decoration: none;
+  border: var(--btn-border-width) solid transparent;
+  border-radius: var(--admiral-radius-button);
+  outline: none;
+  transition: color 0.1s, background-color 0.1s, border-color 0.1s;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--btn-outline-color);
+  outline-offset: 1px;
+}
+.btn:disabled,
+.btn.is-disabled {
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+/* Default */
+.btn-default,
+.btn {
+  color: var(--btn-default-text);
+  background-color: var(--btn-default-bg);
+  border-color: var(--btn-default-border);
+}
+.btn-default:hover:not(:disabled):not(.is-disabled),
+.btn:hover:not(:disabled):not(.is-disabled) {
+  color: var(--btn-default-hover-text);
+  background-color: var(--btn-default-hover-bg);
+  border-color: var(--btn-default-hover-border);
+}
+.btn-default:active:not(:disabled):not(.is-disabled),
+.btn:active:not(:disabled):not(.is-disabled) {
+  color: var(--btn-default-active-text);
+  background-color: var(--btn-default-active-bg);
+  border-color: var(--btn-default-active-border);
+}
+.btn-default:disabled,
+.btn-default.is-disabled,
+.btn:disabled,
+.btn.is-disabled {
+  color: var(--btn-default-disabled-text);
+  background-color: var(--btn-default-disabled-bg);
+  border-color: var(--btn-default-disabled-border);
+}
+
+/* Primary */
+.btn-primary {
+  color: var(--btn-primary-text);
+  background-color: var(--btn-primary-bg);
+  border-color: var(--btn-primary-border);
+}
+.btn-primary:hover:not(:disabled):not(.is-disabled) {
+  color: var(--btn-primary-hover-text);
+  background-color: var(--btn-primary-hover-bg);
+  border-color: var(--btn-primary-hover-border);
+}
+.btn-primary:active:not(:disabled):not(.is-disabled) {
+  color: var(--btn-primary-active-text);
+  background-color: var(--btn-primary-active-bg);
+  border-color: var(--btn-primary-active-border);
+}
+.btn-primary:disabled,
+.btn-primary.is-disabled {
+  color: var(--btn-primary-disabled-text);
+  background-color: var(--btn-primary-disabled-bg);
+  border-color: var(--btn-primary-disabled-border);
+}
+
+/* Success */
+.btn-success {
+  color: var(--btn-success-text);
+  background-color: var(--btn-success-bg);
+  border-color: var(--btn-success-border);
+}
+.btn-success:hover:not(:disabled):not(.is-disabled) {
+  color: var(--btn-success-text);
+  background-color: var(--btn-success-hover-bg);
+  border-color: var(--btn-success-hover-border);
+}
+.btn-success:active:not(:disabled):not(.is-disabled) {
+  background-color: var(--btn-success-active-bg);
+  border-color: var(--btn-success-active-border);
+}
+.btn-success:disabled,
+.btn-success.is-disabled {
+  color: var(--btn-success-disabled-text);
+  background-color: var(--btn-success-disabled-bg);
+  border-color: var(--btn-success-disabled-border);
+}
+
+/* Warning */
+.btn-warning {
+  color: var(--btn-warning-text);
+  background-color: var(--btn-warning-bg);
+  border-color: var(--btn-warning-border);
+}
+.btn-warning:hover:not(:disabled):not(.is-disabled) {
+  background-color: var(--btn-warning-hover-bg);
+  border-color: var(--btn-warning-hover-border);
+}
+.btn-warning:active:not(:disabled):not(.is-disabled) {
+  background-color: var(--btn-warning-active-bg);
+  border-color: var(--btn-warning-active-border);
+}
+.btn-warning:disabled,
+.btn-warning.is-disabled {
+  color: var(--btn-warning-disabled-text);
+  background-color: var(--btn-warning-disabled-bg);
+  border-color: var(--btn-warning-disabled-border);
+}
+
+/* Danger */
+.btn-danger {
+  color: var(--btn-danger-text);
+  background-color: var(--btn-danger-bg);
+  border-color: var(--btn-danger-border);
+}
+.btn-danger:hover:not(:disabled):not(.is-disabled) {
+  color: var(--btn-danger-text);
+  background-color: var(--btn-danger-hover-bg);
+  border-color: var(--btn-danger-hover-border);
+}
+.btn-danger:active:not(:disabled):not(.is-disabled) {
+  background-color: var(--btn-danger-active-bg);
+  border-color: var(--btn-danger-active-border);
+}
+.btn-danger:disabled,
+.btn-danger.is-disabled {
+  color: var(--btn-danger-disabled-text);
+  background-color: var(--btn-danger-disabled-bg);
+  border-color: var(--btn-danger-disabled-border);
+}
+
+/* Plain 描边风格（背景白/浅，边框与文字为类型色） */
+.btn-plain.btn-default,
+.btn-plain {
+  color: var(--btn-default-text);
+  background-color: #fff;
+  border-color: var(--btn-default-border);
+}
+.btn-plain.btn-default:hover:not(:disabled):not(.is-disabled),
+.btn-plain:hover:not(:disabled):not(.is-disabled) {
+  color: var(--btn-default-hover-text);
+  background-color: var(--btn-default-hover-bg);
+  border-color: var(--btn-default-hover-border);
+}
+.btn-plain.btn-primary {
+  color: var(--btn-primary-bg);
+  background-color: #fff;
+  border-color: #a0cfff;
+}
+.btn-plain.btn-primary:hover:not(:disabled):not(.is-disabled) {
+  color: var(--btn-primary-hover-text);
+  background-color: var(--btn-primary-hover-bg);
+  border-color: var(--btn-primary-hover-border);
+}
+.btn-plain.btn-success {
+  color: var(--btn-success-bg);
+  background-color: #fff;
+  border-color: #b3e19d;
+}
+.btn-plain.btn-success:hover:not(:disabled):not(.is-disabled) {
+  color: var(--btn-success-text);
+  background-color: var(--btn-success-hover-bg);
+  border-color: var(--btn-success-hover-border);
+}
+.btn-plain.btn-warning {
+  color: var(--btn-warning-bg);
+  background-color: #fff;
+  border-color: #f3d19e;
+}
+.btn-plain.btn-warning:hover:not(:disabled):not(.is-disabled) {
+  color: var(--btn-warning-text);
+  background-color: var(--btn-warning-hover-bg);
+  border-color: var(--btn-warning-hover-border);
+}
+.btn-plain.btn-danger {
+  color: var(--btn-danger-bg);
+  background-color: #fff;
+  border-color: #fab6b6;
+}
+.btn-plain.btn-danger:hover:not(:disabled):not(.is-disabled) {
+  color: var(--btn-danger-text);
+  background-color: var(--btn-danger-hover-bg);
+  border-color: var(--btn-danger-hover-border);
+}
+
+/* 尺寸 */
+.btn-large {
+  height: var(--btn-height-large);
+  padding: 0 calc(var(--btn-padding-x-large) - var(--btn-border-width));
+  font-size: var(--btn-font-size-large);
+}
+.btn-small {
+  height: var(--btn-height-small);
+  padding: 0 calc(var(--btn-padding-x-small) - var(--btn-border-width));
+  font-size: var(--btn-font-size-small);
 }
 
 /* 保证整页 flex 布局链不断：Tauri WebView 下必须显式高度 */
@@ -59,6 +348,35 @@ body {
   20%, 40%, 60%, 80% { transform: translateX(4px); }
 }
 /* 设置卡片 hover */
+/* ChatInput 聚焦态：规范 §6.2 */
+.chat-input-focus:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.3);
+}
+
+/* Header 下拉菜单：规范 §6.7 菜单项 Hover 浅灰背景 */
+.header-dropdown-item:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+.header-dropdown-logout:hover {
+  background-color: rgba(245, 108, 108, 0.08);
+}
+
+/* Dialog 打开动效：规范 §6.9 scale(0.95)→scale(1) + opacity 0→1，200ms */
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.admiral-dialog-content {
+  animation: dialog-in 0.2s ease-out;
+}
+
 /* Header 下拉菜单进入动效 */
 @keyframes header-dropdown-in {
   from {
@@ -82,6 +400,11 @@ body {
   }
 }
 
+/* 设置卡片：规范 §5.4 Hover 时微上浮 + 阴影加深 */
+.settings-card {
+  box-shadow: var(--admiral-shadow-card);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
 .settings-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -95,7 +418,7 @@ body {
   background-color: rgba(0, 0, 0, 0.04) !important;
 }
 
-/* 分栏拖拽手柄：透明，hover 显示灰色 */
+/* 分栏拖拽手柄：规范 §11.2 透明，hover 显示灰色，拖拽时变蓝 */
 .resize-handle {
   background: transparent;
   transition: background 0.15s ease;
@@ -103,15 +426,19 @@ body {
 .resize-handle:hover {
   background: rgba(220, 223, 230, 0.5);
 }
+.resize-handle:active,
+.resize-handle.resize-dragging {
+  background: rgba(64, 158, 255, 0.3);
+}
 
-/* 时间线运行中节点脉冲动画 */
+/* 时间线运行中节点脉冲动画：规范 §8.3 scale(1)→scale(1.5)→scale(1) */
 @keyframes timeline-pulse {
   0%, 100% {
     transform: scale(1);
     opacity: 1;
   }
   50% {
-    transform: scale(1.3);
+    transform: scale(1.5);
     opacity: 0.8;
   }
 }

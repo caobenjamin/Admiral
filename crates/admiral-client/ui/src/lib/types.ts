@@ -57,3 +57,84 @@ export interface BoundAccountRecord {
   platform: string;
   created_at: string;
 }
+
+// ---------- Task ----------
+export type TaskType = "instant" | "cron" | "heartbeat";
+export type TaskStatus =
+  | "draft"
+  | "planning"
+  | "plan_ready"
+  | "dry_running"
+  | "dry_run_passed"
+  | "test_running"
+  | "test_run_passed"
+  | "deployed"
+  | "scheduled"
+  | "running"
+  | "paused"
+  | "succeeded"
+  | "failed";
+
+export interface TaskStep {
+  seq: number;
+  skill_id: string;
+  params: Record<string, unknown>;
+  depends_on?: number[];
+  description?: string | null;
+}
+
+export interface TaskPlan {
+  steps: TaskStep[];
+  estimated_duration_secs?: number;
+  risk_level?: string;
+}
+
+export interface Task {
+  id: string;
+  name: string;
+  description: string | null;
+  task_type: TaskType;
+  status: TaskStatus;
+  plan: TaskPlan | null;
+  platform: string;
+  account_ids: string[];
+  trigger: {
+    trigger_type: string;
+    cron_expression?: string | null;
+    heartbeat_condition?: string | null;
+    next_run_at?: string | null;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StepResult {
+  step_seq: number;
+  skill_id: string;
+  success: boolean;
+  result?: unknown;
+  error?: string | null;
+  duration_ms?: number | null;
+}
+
+export interface TaskRun {
+  id: string;
+  task_id: string;
+  run_type: "dry_run" | "test_run" | "production";
+  status: "running" | "succeeded" | "failed" | "cancelled";
+  started_at: string;
+  finished_at?: string | null;
+  step_results: StepResult[];
+  error?: string | null;
+}
+
+// ---------- Agent ----------
+export interface AgentResponse {
+  content: string;
+  tool_calls_used: [string, { success: boolean; data?: unknown; error?: string | null }][];
+  session: {
+    id: string;
+    task_id: string | null;
+    messages: { role: string; content?: string | null; tool_calls?: unknown; name?: string | null; tool_call_id?: string | null }[];
+  };
+}

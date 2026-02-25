@@ -43,8 +43,8 @@ export function StatusBar() {
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <span
             style={{
-              width: 6,
-              height: 6,
+              width: 8,
+              height: 8,
               borderRadius: "50%",
               flexShrink: 0,
               backgroundColor: dotColor,

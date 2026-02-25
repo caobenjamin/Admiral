@@ -1,12 +1,14 @@
 //! Axum router: /health, /api/v1/auth, /api/v1/oauth/bilibili, etc.
 
 use axum::{
+    middleware::from_fn_with_state,
     routing::{get, post},
     Router,
 };
 use tower_http::cors::CorsLayer;
 
-use crate::api::{admin, auth, llm, mapi, oauth};
+use crate::api::{admin, auth, knowledge, llm, mapi, oauth};
+use crate::middleware::request_log;
 use crate::state::AppState;
 
 pub fn app(state: AppState) -> Router {
@@ -33,9 +35,12 @@ pub fn app(state: AppState) -> Router {
         .nest("/api/v1/oauth/bilibili", oauth_bilibili_routes)
         .route("/api/v1/mapi/proxy", axum::routing::post(mapi::proxy))
         .route("/api/v1/llm/chat", axum::routing::post(llm::chat))
+        .route("/api/v1/knowledge/query", axum::routing::post(knowledge::query))
         .route("/api/v1/admin/invites", axum::routing::get(admin::list_invites).post(admin::create_invite))
         .route("/api/v1/admin/users/{id}/extend", axum::routing::post(admin::extend_user))
+        .route("/api/v1/admin/knowledge/ingest", axum::routing::post(admin::knowledge_ingest))
         .layer(CorsLayer::permissive())
+        .layer(from_fn_with_state(state.clone(), request_log::request_log_layer))
         .with_state(state)
 }
 

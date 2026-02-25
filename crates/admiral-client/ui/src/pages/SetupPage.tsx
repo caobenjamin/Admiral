@@ -9,11 +9,7 @@ export function SetupPage() {
       <p className="text-sm mb-4" style={{ color: "var(--admiral-text-secondary)" }}>
         完成权限申请与平台授权后即可开始使用。您可以在设置中随时管理。
       </p>
-      <Link
-        to="/settings/platforms"
-        className="inline-flex px-4 py-2 text-sm font-medium text-white rounded-md bg-primary"
-        style={{ borderRadius: "var(--admiral-radius-button)" }}
-      >
+      <Link to="/settings/platforms" className="btn btn-primary">
         前往平台授权
       </Link>
     </div>

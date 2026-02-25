@@ -35,6 +35,7 @@ pub async fn proxy(
         .ok_or(crate::error::AppError::BadRequest("OAuth not configured".into()))?;
     let http = reqwest::Client::new();
     let (status, body) = mapi_proxy::proxy(
+        &state.db,
         oauth,
         &http,
         auth_user.0,

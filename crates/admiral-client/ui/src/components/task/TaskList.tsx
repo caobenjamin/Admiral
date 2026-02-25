@@ -4,12 +4,13 @@ import { useTaskStore, type TaskMeta, type TaskStatus } from "@/stores/taskStore
 import { useUiStore } from "@/stores/uiStore";
 
 function taskStatusLabel(s: TaskStatus): string {
-  const map: Record<TaskStatus, string> = {
+  const map: Record<string, string> = {
     draft: "草稿",
+    planning: "规划中",
+    plan_ready: "计划就绪",
     dry_running: "Dry Run",
     dry_run_passed: "Dry Run 通过",
-    test_run_ready: "待测试",
-    test_run_running: "测试中",
+    test_running: "测试中",
     test_run_passed: "测试通过",
     deployed: "已部署",
     running: "运行中",
@@ -22,7 +23,7 @@ function taskStatusLabel(s: TaskStatus): string {
 }
 
 function taskStatusDot(s: TaskStatus): string {
-  if (s === "running" || s === "test_run_running" || s === "dry_running") return "bg-warning";
+  if (s === "running" || s === "test_running" || s === "dry_running") return "bg-warning";
   if (s === "succeeded") return "bg-success";
   if (s === "failed") return "bg-danger";
   if (s === "scheduled") return "bg-primary";
@@ -50,10 +51,10 @@ function TaskListItem({
       onClick={onSelect}
       role="option"
       aria-selected={selected}
-      className={`block w-full text-left px-3 py-2.5 rounded-lg flex flex-col gap-1.5 transition-all shrink-0 ${
+      className={`block w-full text-left px-3 py-2.5 rounded-lg flex flex-col gap-1.5 transition-colors duration-150 shrink-0 ${
         selected
           ? "bg-[rgba(64,158,255,0.1)] text-[var(--color-primary)]"
-          : "border border-[var(--admiral-border)] bg-[var(--admiral-card)] hover:bg-[rgba(0,0,0,0.04)] hover:border-[var(--admiral-text-placeholder)]/50 text-[var(--admiral-text-primary)]"
+          : "border border-[var(--admiral-border)] bg-[var(--admiral-card)] hover:bg-[rgba(0,0,0,0.04)] hover:border-[var(--admiral-text-secondary)] text-[var(--admiral-text-primary)]"
       }`}
       style={{
         borderRadius: "var(--admiral-radius-card)",

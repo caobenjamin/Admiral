@@ -1,14 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { useAuth } from "@/hooks/useAuth";
+import { useAgent } from "@/hooks/useAgent";
 import { TaskDetail } from "@/components/task/TaskDetail";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageBubble, type ChatMessage } from "@/components/chat/MessageBubble";
 
+function sessionMessagesToChatMessages(
+  sessionMessages: { role: string; content?: string | null; tool_calls?: unknown; name?: string | null }[]
+): ChatMessage[] {
+  return sessionMessages.map((m, i) => {
+    let content = m.content ?? "";
+    if (m.role === "assistant" && m.tool_calls && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+      if (!content) content = "[调用工具]";
+    }
+    const role = m.role === "user" ? "user" : m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "tool";
+    return { id: `msg-${i}`, role, content };
+  });
+}
+
 export function HomePage() {
   const user = useAuthStore((s) => s.user);
   const { loadUserAndLicense } = useAuth();
+  const { chat, loading, error } = useAgent(null);
   const navigate = useNavigate();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
@@ -18,23 +33,26 @@ export function HomePage() {
     });
   }, [loadUserAndLicense, navigate]);
 
-  if (!user) return null;
+  const handleSend = useCallback(
+    async (content: string) => {
+      const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", content };
+      setMessages((prev) => [...prev, userMsg]);
+      try {
+        const response = await chat(content);
+        const list = sessionMessagesToChatMessages(response.session.messages);
+        setMessages(list);
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : "请求失败，请重试。";
+        setMessages((prev) => [
+          ...prev,
+          { id: `a-${Date.now()}`, role: "assistant", content: errMsg },
+        ]);
+      }
+    },
+    [chat]
+  );
 
-  const handleSend = (content: string) => {
-    const userMsg: ChatMessage = {
-      id: `u-${Date.now()}`,
-      role: "user",
-      content,
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    // 占位：后续接 Agent/LLM，这里追加一条模拟回复
-    const assistantMsg: ChatMessage = {
-      id: `a-${Date.now()}`,
-      role: "assistant",
-      content: "已收到您的指令。任务创建与 Agent 对话将在 Phase 3/4 接入。",
-    };
-    setTimeout(() => setMessages((prev) => [...prev, assistantMsg]), 400);
-  };
+  if (!user) return null;
 
   return (
     <div
@@ -91,6 +109,8 @@ export function HomePage() {
         <ChatInput
           onSend={handleSend}
           placeholder="输入指令或描述任务…"
+          disabled={loading}
+          loading={loading}
         />
       </div>
     </div>

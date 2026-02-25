@@ -1,16 +1,18 @@
 import { Link } from "react-router-dom";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore, type TaskStatus } from "@/stores/taskStore";
+import { useTasks } from "@/hooks/useTasks";
 import { TaskTimeline } from "./TaskTimeline";
 import { ConfirmActions } from "./ConfirmActions";
 
 function statusLabel(s: TaskStatus): string {
-  const map: Record<TaskStatus, string> = {
+  const map: Record<string, string> = {
     draft: "草稿",
+    planning: "规划中",
+    plan_ready: "计划就绪",
     dry_running: "Dry Run 中",
     dry_run_passed: "Dry Run 通过",
-    test_run_ready: "待测试",
-    test_run_running: "测试运行中",
+    test_running: "测试运行中",
     test_run_passed: "测试通过",
     deployed: "已部署",
     running: "运行中",
@@ -22,8 +24,10 @@ function statusLabel(s: TaskStatus): string {
   return map[s] ?? s;
 }
 
-function typeLabel(t: "instant" | "scheduled"): string {
-  return t === "instant" ? "即时任务" : "定时任务";
+function typeLabel(t: "instant" | "scheduled" | "heartbeat"): string {
+  if (t === "instant") return "即时任务";
+  if (t === "heartbeat") return "心跳任务";
+  return "定时任务";
 }
 
 export function TaskDetail() {
@@ -41,11 +45,7 @@ export function TaskDetail() {
         <p className="text-sm text-[var(--admiral-text-secondary)] mb-4">
           在左侧选择任务，或创建新任务
         </p>
-        <Link
-          to="/task/new"
-          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white rounded-md bg-[var(--color-primary)] hover:opacity-90 transition-opacity"
-          style={{ borderRadius: "var(--admiral-radius-button)" }}
-        >
+        <Link to="/task/new" className="btn btn-primary inline-flex items-center gap-2">
           <span>+</span>
           <span>新建任务</span>
         </Link>
@@ -53,23 +53,30 @@ export function TaskDetail() {
     );
   }
 
-  const showProgress = ["running", "dry_running", "test_run_running", "succeeded", "failed"].includes(task.status);
+  const { runTestRun, runProduction, refresh } = useTasks();
+  const showProgress = ["running", "dry_running", "test_running", "succeeded", "failed"].includes(task.status);
   const progressPercent =
     task.status === "succeeded"
       ? 100
       : task.status === "failed"
         ? 60
-        : ["running", "dry_running", "test_run_running"].includes(task.status)
+        : ["running", "dry_running", "test_running"].includes(task.status)
           ? 60
           : 0;
   const showConfirmActions =
     task.status === "dry_run_passed" || task.status === "test_run_passed";
 
-  const handleConfirm = () => {
-    // 占位：Phase 5 接任务引擎
+  const handleConfirm = async () => {
+    try {
+      if (task.status === "dry_run_passed") await runTestRun(task.id);
+      else if (task.status === "test_run_passed") await runProduction(task.id);
+      await refresh();
+    } catch {
+      await refresh();
+    }
   };
-  const handleCancel = () => {
-    // 占位：Phase 5 接任务引擎
+  const handleCancel = async () => {
+    await refresh();
   };
 
   return (

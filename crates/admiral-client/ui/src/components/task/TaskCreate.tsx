@@ -149,17 +149,7 @@ export function TaskCreate() {
                   }
                 }}
                 disabled={!name.trim()}
-                style={{
-                  padding: "10px 20px",
-                  fontSize: 14,
-                  fontWeight: 500,
-                  borderRadius: "var(--admiral-radius-button)",
-                  border: "none",
-                  backgroundColor: "var(--color-primary)",
-                  color: "#fff",
-                  cursor: name.trim() ? "pointer" : "not-allowed",
-                  opacity: name.trim() ? 1 : 0.5,
-                }}
+                className="btn btn-primary"
               >
                 下一步 →
               </button>
@@ -213,35 +203,10 @@ export function TaskCreate() {
               </button>
             </div>
             <div style={{ display: "flex", gap: 12 }}>
-              <button
-                type="button"
-                onClick={() => setStep("name")}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: 14,
-                  borderRadius: "var(--admiral-radius-button)",
-                  border: "1px solid var(--admiral-border)",
-                  backgroundColor: "var(--admiral-card)",
-                  color: "var(--admiral-text-primary)",
-                  cursor: "pointer",
-                }}
-              >
+              <button type="button" onClick={() => setStep("name")} className="btn btn-default">
                 ← 上一步
               </button>
-              <button
-                type="button"
-                onClick={() => setStep("confirm")}
-                style={{
-                  padding: "10px 20px",
-                  fontSize: 14,
-                  fontWeight: 500,
-                  borderRadius: "var(--admiral-radius-button)",
-                  border: "none",
-                  backgroundColor: "var(--color-primary)",
-                  color: "#fff",
-                  cursor: "pointer",
-                }}
-              >
+              <button type="button" onClick={() => setStep("confirm")} className="btn btn-primary">
                 下一步 →
               </button>
             </div>
@@ -259,37 +224,10 @@ export function TaskCreate() {
               <p style={{ color: "var(--color-danger)", fontSize: 14, marginBottom: 12 }}>{error}</p>
             )}
             <div style={{ display: "flex", gap: 12 }}>
-              <button
-                type="button"
-                onClick={() => setStep("type")}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: 14,
-                  borderRadius: "var(--admiral-radius-button)",
-                  border: "1px solid var(--admiral-border)",
-                  backgroundColor: "var(--admiral-card)",
-                  color: "var(--admiral-text-primary)",
-                  cursor: "pointer",
-                }}
-              >
+              <button type="button" onClick={() => setStep("type")} className="btn btn-default">
                 ← 上一步
               </button>
-              <button
-                type="button"
-                onClick={handleCreate}
-                disabled={loading}
-                style={{
-                  padding: "10px 20px",
-                  fontSize: 14,
-                  fontWeight: 500,
-                  borderRadius: "var(--admiral-radius-button)",
-                  border: "none",
-                  backgroundColor: "var(--color-primary)",
-                  color: "#fff",
-                  cursor: loading ? "not-allowed" : "pointer",
-                  opacity: loading ? 0.7 : 1,
-                }}
-              >
+              <button type="button" onClick={handleCreate} disabled={loading} className="btn btn-primary">
                 {loading ? "创建中…" : "创建任务"}
               </button>
             </div>

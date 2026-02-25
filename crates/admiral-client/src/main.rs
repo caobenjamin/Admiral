@@ -3,8 +3,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use admiral_client_lib::tauri_bridge;
+use admiral_client_lib::db;
 
 fn main() {
+    if let Err(e) = db::migrations::run_migrations(&db::models::db_path()) {
+        tracing::warn!(error = %e, "SQLite migration failed");
+    }
     let state = tauri_bridge::create_app_state();
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -29,6 +33,13 @@ fn main() {
             tauri_bridge::get_config_path,
             tauri_bridge::get_server_url,
             tauri_bridge::set_server_url,
+            tauri_bridge::task_create,
+            tauri_bridge::task_list,
+            tauri_bridge::task_get,
+            tauri_bridge::task_run_dry_run,
+            tauri_bridge::task_run_test_run,
+            tauri_bridge::task_run_production,
+            tauri_bridge::agent_chat,
         ])
         .run(tauri::generate_context!())
         .expect("error running Admiral");

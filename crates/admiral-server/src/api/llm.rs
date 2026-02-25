@@ -1,4 +1,5 @@
 //! LLM proxy: POST /api/v1/llm/chat
+//! 请求与响应（含报错）落表 external_request_log。
 
 use admiral_types::api::LlmChatRequest;
 use axum::{
@@ -7,10 +8,12 @@ use axum::{
     response::Response,
     Json,
 };
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::error::Result;
 use crate::state::AppState;
+
+const DB_BODY_MAX: usize = 65535;
 
 fn response_body_preview(bytes: &[u8], limit: usize) -> String {
     if bytes.is_empty() {
@@ -28,12 +31,20 @@ fn response_body_preview(bytes: &[u8], limit: usize) -> String {
     }
 }
 
+fn truncate_for_db(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}... (truncated)", &s[..max])
+    }
+}
+
 pub async fn chat(
     State(state): State<AppState>,
     auth_user: crate::middleware::auth_guard::AuthUser,
     Json(req): Json<LlmChatRequest>,
 ) -> Result<Response> {
-    let _ = auth_user;
+    let user_id = auth_user.0;
     let llm = state
         .llm
         .as_ref()
@@ -45,10 +56,73 @@ pub async fn chat(
         "model": "deepseek-chat",
         "max_tokens": req.max_tokens.unwrap_or(4096),
     });
+    let request_url = format!("{}/v1/chat/completions", llm.base_url);
+    let request_body_str = truncate_for_db(
+        &serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string()),
+        DB_BODY_MAX,
+    );
     if req.stream {
-        let resp = llm.chat_stream(&body).await?;
+        let resp = match llm.chat_stream(&body).await {
+            Ok(r) => r,
+            Err(e) => {
+                let err_msg = e.to_string();
+                if let Err(le) = crate::service::log_service::log_external_request(
+                    &state.db,
+                    "llm",
+                    &request_url,
+                    "POST",
+                    Some(&request_body_str),
+                    None,
+                    None,
+                    Some(&err_msg),
+                    Some(user_id),
+                )
+                .await
+                {
+                    warn!(error = %le, "external_request_log insert failed");
+                }
+                return Err(crate::error::AppError::Upstream(err_msg));
+            }
+        };
         let status = resp.status();
-        let bytes = resp.bytes().await.map_err(|e| crate::error::AppError::Upstream(e.to_string()))?;
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                let err_msg = e.to_string();
+                if let Err(le) = crate::service::log_service::log_external_request(
+                    &state.db,
+                    "llm",
+                    &request_url,
+                    "POST",
+                    Some(&request_body_str),
+                    Some(status.as_u16()),
+                    None,
+                    Some(&err_msg),
+                    Some(user_id),
+                )
+                .await
+                {
+                    warn!(error = %le, "external_request_log insert failed");
+                }
+                return Err(crate::error::AppError::Upstream(err_msg));
+            }
+        };
+        let response_body_db = truncate_for_db(&String::from_utf8_lossy(&bytes), DB_BODY_MAX);
+        if let Err(le) = crate::service::log_service::log_external_request(
+            &state.db,
+            "llm",
+            &request_url,
+            "POST",
+            Some(&request_body_str),
+            Some(status.as_u16()),
+            Some(&response_body_db),
+            None,
+            Some(user_id),
+        )
+        .await
+        {
+            warn!(error = %le, "external_request_log insert failed");
+        }
         info!(
             response_status = status.as_u16(),
             response_stream = true,
@@ -61,16 +135,54 @@ pub async fn chat(
             .body(Body::from(bytes.to_vec()))
             .unwrap())
     } else {
-        let bytes = llm.chat(&body).await?;
-        info!(
-            response_status = 200u16,
-            response_body = %response_body_preview(&bytes, 2048),
-            "response to client"
-        );
-        Ok(Response::builder()
-            .status(200)
-            .header("Content-Type", "application/json")
-            .body(Body::from(bytes))
-            .unwrap())
+        match llm.chat(&body).await {
+            Ok(bytes) => {
+                let response_body_db = truncate_for_db(&String::from_utf8_lossy(&bytes), DB_BODY_MAX);
+                if let Err(le) = crate::service::log_service::log_external_request(
+                    &state.db,
+                    "llm",
+                    &request_url,
+                    "POST",
+                    Some(&request_body_str),
+                    Some(200),
+                    Some(&response_body_db),
+                    None,
+                    Some(user_id),
+                )
+                .await
+                {
+                    warn!(error = %le, "external_request_log insert failed");
+                }
+                info!(
+                    response_status = 200u16,
+                    response_body = %response_body_preview(&bytes, 2048),
+                    "response to client"
+                );
+                Ok(Response::builder()
+                    .status(200)
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(bytes))
+                    .unwrap())
+            }
+            Err(e) => {
+                let err_msg = e.to_string();
+                if let Err(le) = crate::service::log_service::log_external_request(
+                    &state.db,
+                    "llm",
+                    &request_url,
+                    "POST",
+                    Some(&request_body_str),
+                    None,
+                    None,
+                    Some(&err_msg),
+                    Some(user_id),
+                )
+                .await
+                {
+                    warn!(error = %le, "external_request_log insert failed");
+                }
+                Err(crate::error::AppError::Upstream(err_msg))
+            }
+        }
     }
 }

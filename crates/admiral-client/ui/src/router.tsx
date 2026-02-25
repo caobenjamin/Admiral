@@ -63,10 +63,8 @@ function SettingsPage() {
               borderRadius: "var(--admiral-radius-card)",
               border: "1px solid var(--admiral-border)",
               backgroundColor: "var(--admiral-card)",
-              boxShadow: "var(--admiral-shadow-card)",
               textDecoration: "none",
               color: "var(--admiral-text-primary)",
-              transition: "transform 0.2s ease, box-shadow 0.2s ease",
             }}
           >
             <span style={{ fontSize: 24, marginBottom: 8 }}>{c.icon}</span>

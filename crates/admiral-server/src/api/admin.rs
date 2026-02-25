@@ -1,4 +1,4 @@
-//! Admin API: invites (create, list), user extend. Requires role=admin.
+//! Admin API: invites (create, list), user extend, knowledge ingest. Requires role=admin.
 
 use axum::{
     extract::{Path, State},
@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::entities::{entitlement, invite, user};
 use crate::error::{AppError, Result};
+use crate::service::knowledge_service;
 use crate::state::AppState;
 use sea_orm::ActiveValue::Set;
 
@@ -134,4 +135,34 @@ pub async fn extend_user(
     active.extend_reason = Set(req.reason);
     active.save(&state.db).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Request body for knowledge ingest (optional custom dir).
+#[derive(Deserialize, Default)]
+pub struct KnowledgeIngestRequest {
+    /// Directory path to scan for .md files. Default: env ADMIRAL_KNOWLEDGE_DIR or "./knowledge"
+    pub dir: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct KnowledgeIngestResponse {
+    pub chunks_inserted: u32,
+}
+
+/// Ingest Markdown files from a directory into the knowledge base. Admin only.
+pub async fn knowledge_ingest(
+    State(state): State<AppState>,
+    auth_user: crate::middleware::auth_guard::AuthUser,
+    req: Option<Json<KnowledgeIngestRequest>>,
+) -> Result<Json<KnowledgeIngestResponse>> {
+    require_admin(&state, auth_user.0).await?;
+    let req = req.unwrap_or_default();
+    let dir = req
+        .dir
+        .clone()
+        .or_else(|| std::env::var("ADMIRAL_KNOWLEDGE_DIR").ok())
+        .unwrap_or_else(|| "./knowledge".to_string());
+    let path = std::path::Path::new(&dir);
+    let chunks_inserted = knowledge_service::ingest_from_dir(&state.db, path).await?;
+    Ok(Json(KnowledgeIngestResponse { chunks_inserted }))
 }

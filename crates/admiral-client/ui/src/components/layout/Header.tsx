@@ -168,18 +168,8 @@ export function Header() {
               <button
                 type="button"
                 onClick={() => setAccountOpen((o) => !o)}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "6px 8px",
-                  fontSize: 14,
-                  color: "var(--admiral-text-primary)",
-                  border: "1px solid var(--admiral-border)",
-                  borderRadius: 6,
-                  background: "var(--admiral-card)",
-                  cursor: "pointer",
-                }}
+                className="btn btn-default"
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 8, paddingRight: 8 }}
                 aria-expanded={accountOpen}
                 aria-haspopup="true"
               >
@@ -214,22 +204,25 @@ export function Header() {
                     animation: "header-dropdown-in 0.15s ease-out",
                   }}
                 >
-                  <div
-                    style={{
-                      padding: "8px 12px",
-                      borderBottom: "1px solid var(--admiral-border)",
-                      fontSize: 14,
-                      color: "var(--admiral-text-secondary)",
-                    }}
-                  >
-                    {user.name || user.email}
-                  </div>
+                <div
+                  className="header-dropdown-item"
+                  style={{
+                    padding: "8px 12px",
+                    borderBottom: "1px solid var(--admiral-border)",
+                    fontSize: 14,
+                    color: "var(--admiral-text-secondary)",
+                    transition: "background-color 0.15s ease",
+                  }}
+                >
+                  {user.name || user.email}
+                </div>
                   <button
                     type="button"
                     onClick={() => {
                       logout();
                       setAccountOpen(false);
                     }}
+                    className="header-dropdown-item header-dropdown-logout"
                     style={{
                       width: "100%",
                       textAlign: "left",
@@ -239,6 +232,7 @@ export function Header() {
                       border: "none",
                       background: "none",
                       cursor: "pointer",
+                      transition: "background-color 0.15s ease",
                     }}
                   >
                     退出登录

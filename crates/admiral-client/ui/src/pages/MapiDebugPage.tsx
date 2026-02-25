@@ -98,12 +98,7 @@ export function MapiDebugPage() {
             placeholder="POST 时填写"
           />
         </label>
-        <button
-          type="button"
-          onClick={handleSend}
-          disabled={loading}
-          className="rounded border px-4 py-2 bg-blue-600 text-white disabled:opacity-50"
-        >
+        <button type="button" onClick={handleSend} disabled={loading} className="btn btn-primary">
           {loading ? "请求中..." : "发送"}
         </button>
       </div>

@@ -67,13 +67,13 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             ? {
                 backgroundColor: "var(--color-primary)",
                 color: "#fff",
-                borderTopRightRadius: 4,
+                borderBottomRightRadius: 4,
               }
             : {
                 backgroundColor: "var(--admiral-card)",
                 border: "1px solid var(--admiral-border)",
                 color: "var(--admiral-text-primary)",
-                borderTopLeftRadius: 4,
+                borderBottomLeftRadius: 4,
               }),
         }}
       >
