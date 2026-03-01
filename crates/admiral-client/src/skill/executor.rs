@@ -38,19 +38,26 @@ impl SkillExecutor {
 
         let start = Instant::now();
 
-        let result = match skill.category {
-            admiral_types::skill::SkillCategory::Mapi => {
-                let token = access_token
-                    .ok_or_else(|| anyhow::anyhow!("MAPI skill requires access_token"))?;
-                self.execute_mapi(&skill, &call, token).await
-            }
-            admiral_types::skill::SkillCategory::Tools => {
-                let token = access_token
-                    .ok_or_else(|| anyhow::anyhow!("Tools skill (e.g. account list) requires access_token"))?;
-                self.execute_tools(&skill, &call, token).await
-            }
-            admiral_types::skill::SkillCategory::Semantic => {
-                return Err(anyhow::anyhow!("semantic skills are executed by LLM, not by executor"));
+        // 账户列表固定走本地绑定表，不进入 MAPI，避免 account_id required for MAPI 导致重复确认/卡住
+        let result = if skill.id == "bili.account.list" {
+            let token = access_token
+                .ok_or_else(|| anyhow::anyhow!("account list requires access_token"))?;
+            self.execute_bili_account_list_local(token).await
+        } else {
+            match skill.category {
+                admiral_types::skill::SkillCategory::Mapi => {
+                    let token = access_token
+                        .ok_or_else(|| anyhow::anyhow!("MAPI skill requires access_token"))?;
+                    self.execute_mapi(&skill, &call, token).await
+                }
+                admiral_types::skill::SkillCategory::Tools => {
+                    let token = access_token
+                        .ok_or_else(|| anyhow::anyhow!("Tools skill (e.g. account list) requires access_token"))?;
+                    self.execute_tools(&skill, &call, token).await
+                }
+                admiral_types::skill::SkillCategory::Semantic => {
+                    return Err(anyhow::anyhow!("semantic skills are executed by LLM, not by executor"));
+                }
             }
         };
 

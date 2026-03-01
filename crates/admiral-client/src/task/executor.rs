@@ -69,12 +69,16 @@ pub async fn execute_plan(
         });
     }
 
+    // 若第一步是 bili.account.list 且仅返回 1 个账户，后续步无 account_id 时用该值
+    let mut resolved_account_id: Option<i64> = None;
+
     for step in plan.steps.iter() {
         let account_id = step
             .params
             .get("account_id")
             .and_then(|v| v.as_i64())
-            .or_else(|| task.account_ids.first().and_then(|s| s.parse().ok()));
+            .or_else(|| task.account_ids.first().and_then(|s| s.parse().ok()))
+            .or(resolved_account_id);
 
         if run_type == RunType::TestRun && !step_results.is_empty() {
             break;
@@ -95,6 +99,18 @@ pub async fn execute_plan(
             Ok(sr) => (sr.success, sr.data, sr.error),
             Err(e) => (false, None, Some(e.to_string())),
         };
+
+        if step.skill_id == "bili.account.list" && success {
+            if let Some(ref data) = result_data {
+                if let Some(arr) = data.get("records").and_then(|r| r.as_array()) {
+                    if arr.len() == 1 {
+                        if let Some(id) = arr[0].get("account_id").and_then(|v| v.as_i64()) {
+                            resolved_account_id = Some(id);
+                        }
+                    }
+                }
+            }
+        }
 
         step_results.push(StepResult {
             step_seq: step.seq,

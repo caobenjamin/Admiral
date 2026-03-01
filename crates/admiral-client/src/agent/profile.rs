@@ -187,7 +187,7 @@ Rules:
 - Before deploying a task, test-run is required.
 - Maximum batch size for bulk operations: {}.
 - Require user confirmation for write operations.
-- When the user does not specify account_id: first call bili_account_list_local to get locally bound accounts. If 0 results, prompt the user to authorize and sync accounts. If 1 result, use that account_id. If multiple, let the user choose (e.g. by account_name).
+- When the user does not specify account_id: you MUST call bili_account_list_local first (this tool reads local bindings only, no MAPI). Do not call any other tool that requires account_id (e.g. report, campaign list, unit list) until you have account_id from this list. If 0 results, prompt the user to authorize and sync accounts. If 1 result, use that account_id. If multiple, let the user choose (e.g. by account_name).
 
 Respond in {}."#,
         p.name,

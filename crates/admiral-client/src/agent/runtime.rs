@@ -220,7 +220,14 @@ impl AgentRuntime {
     }
 }
 
+/// Resolve LLM tool name to skill_id. 账户列表只走本地绑定表，不路由到 MAPI。
 fn resolve_tool_name_to_skill_id(name: &str, registry: &crate::skill::registry::SkillRegistry) -> Option<String> {
+    // 明确别名：无论 LLM 用 bili_account_list 还是 bili_account_list_local，都走本地 bili.account.list，避免被当成 MAPI 报 account_id required
+    if name == "bili_account_list" || name == "bili_account_list_local" {
+        if registry.get("bili.account.list").is_some() {
+            return Some("bili.account.list".to_string());
+        }
+    }
     for def in registry.list() {
         if let Some(ref t) = def.llm_tool {
             if t.name == name {
