@@ -50,12 +50,21 @@ pub async fn chat(
         .as_ref()
         .ok_or(crate::error::AppError::BadRequest("LLM not configured".into()))?;
     // 联调阶段固定使用 deepseek-chat，忽略请求中的 model
-    let body = serde_json::json!({
-        "messages": req.messages,
-        "stream": req.stream,
-        "model": "deepseek-chat",
-        "max_tokens": req.max_tokens.unwrap_or(4096),
-    });
+    let mut body_obj = serde_json::map::Map::new();
+    body_obj.insert("messages".to_string(), req.messages.clone());
+    body_obj.insert("stream".to_string(), serde_json::json!(req.stream));
+    body_obj.insert("model".to_string(), serde_json::json!("deepseek-chat"));
+    body_obj.insert(
+        "max_tokens".to_string(),
+        serde_json::json!(req.max_tokens.unwrap_or(4096)),
+    );
+    if let Some(ref t) = req.tools {
+        body_obj.insert("tools".to_string(), t.clone());
+    }
+    if let Some(ref tc) = req.tool_choice {
+        body_obj.insert("tool_choice".to_string(), tc.clone());
+    }
+    let body = serde_json::Value::Object(body_obj);
     let request_url = format!("{}/v1/chat/completions", llm.base_url);
     let request_body_str = truncate_for_db(
         &serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string()),

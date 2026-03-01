@@ -93,11 +93,21 @@ impl AgentRuntime {
                 &knowledge_snippets,
             );
 
+            let tools_list = self.context.skill_registry.build_llm_tools();
+            let tools = if tools_list.is_empty() {
+                None
+            } else {
+                Some(serde_json::to_value(&tools_list).unwrap_or_else(|_| json!([])))
+            };
+            let tool_choice = tools.as_ref().map(|_| json!("auto"));
+
             let req = LlmChatRequest {
                 messages,
                 stream: false,
                 model: self.profile.default_model.clone(),
                 max_tokens: Some(4096),
+                tools,
+                tool_choice,
             };
 
             let token = access_token.ok_or_else(|| anyhow::anyhow!("access_token required for LLM"))?;

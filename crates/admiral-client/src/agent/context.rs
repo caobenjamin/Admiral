@@ -3,6 +3,7 @@
 use crate::agent::memory::MemoryStore;
 use crate::agent::profile::AgentProfile;
 use crate::skill::registry::SkillRegistry;
+use chrono::Local;
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -75,6 +76,12 @@ impl ContextAssembler {
         knowledge_snippets: &[String],
     ) -> serde_json::Value {
         let mut system_parts = vec![self.profile.system_prompt.clone()];
+
+        let today = Local::now().format("%Y-%m-%d").to_string();
+        system_parts.push(format!(
+            "## Current date (use for report queries, start_time/end_time)\n\nToday is {} (YYYY-MM-DD).",
+            today
+        ));
 
         if let Ok(user_mem) = self.memory.load_user_memory() {
             if !user_mem.is_empty() {

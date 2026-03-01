@@ -127,4 +127,10 @@ pub struct LlmChatRequest {
     pub model: Option<String>,
     #[serde(default)]
     pub max_tokens: Option<u32>,
+    /// OpenAI-format tools array; when set, LLM may return tool_calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<serde_json::Value>,
+    /// e.g. "auto" or "required"; forwarded to upstream.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<serde_json::Value>,
 }
