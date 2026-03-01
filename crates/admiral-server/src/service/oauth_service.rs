@@ -18,6 +18,11 @@ const TOKEN_URL: &str = "https://cm.bilibili.com/takumi/api/open_api/oauth2/toke
 const USERINFO_URL: &str = "https://cm.bilibili.com/takumi/api/open_api/oauth2/userinfo";
 const ADVERTISERS_URL: &str = "https://cm.bilibili.com/takumi/api/open_api/oauth2/advertisers";
 
+/// external_request_log 中 oauth 刷新记录的 kind
+const EXTERNAL_LOG_KIND_OAUTH_REFRESH: &str = "oauth_refresh";
+/// 响应体落表最大长度（字节），UTF-8 安全截断
+const OAUTH_REFRESH_RESPONSE_BODY_LOG_MAX: usize = 4096;
+
 #[derive(Clone)]
 pub struct OauthService {
     pub app_id: String,
@@ -466,7 +471,7 @@ impl OauthService {
         }
     }
 
-    pub async fn refresh_one(&self, token_id: Uuid, _user_id: Uuid) -> Result<()> {
+    pub async fn refresh_one(&self, token_id: Uuid, user_id: Uuid) -> Result<()> {
         let stored = self
             .vault
             .get(token_id)
@@ -478,6 +483,13 @@ impl OauthService {
             ("client_secret", self.app_secret.as_str()),
             ("refresh_token", stored.refresh_token.as_str()),
         ];
+        // 脱敏请求体：仅 grant_type、client_id，不记录 client_secret/refresh_token
+        let request_body_log = serde_json::json!({
+            "grant_type": "refresh_token",
+            "client_id": self.app_id,
+        })
+        .to_string();
+
         let resp = self
             .http
             .post(TOKEN_URL)
@@ -485,28 +497,112 @@ impl OauthService {
             .send()
             .await
             .map_err(|e| AppError::Upstream(e.to_string()))?;
-        let body: BiliTokenResponse = resp
-            .json()
+        let status = resp.status().as_u16();
+        let bytes = resp
+            .bytes()
             .await
             .map_err(|e| AppError::Upstream(e.to_string()))?;
-        if body.code != 0 {
-            return Err(AppError::Upstream(
-                body.message.unwrap_or_else(|| "bilibili refresh error".into()),
-            ));
-        }
-        let data = body.data.ok_or(AppError::Upstream("no data".into()))?;
-        let expires_at = Utc::now() + chrono::Duration::seconds(data.expires_in);
-        let refresh_expires_at = data
-            .refresh_expires_in
-            .map(|s| Utc::now() + chrono::Duration::seconds(s));
-        self.vault
-            .update(
-                token_id,
-                &data.access_token,
-                &data.refresh_token,
-                expires_at,
-                refresh_expires_at,
+        let raw = String::from_utf8_lossy(&bytes).to_string();
+        let response_body_log = if raw.len() > OAUTH_REFRESH_RESPONSE_BODY_LOG_MAX {
+            format!(
+                "{}... (truncated)",
+                crate::utils::truncate_utf8_at(&raw, OAUTH_REFRESH_RESPONSE_BODY_LOG_MAX)
             )
-            .await
+        } else {
+            raw.clone()
+        };
+
+        let body_result: Result<BiliTokenResponse, _> = serde_json::from_slice(bytes.as_ref());
+        match body_result {
+            Err(e) => {
+                let err_msg = format!("error decoding response body: {}", e);
+                let _ = crate::service::log_service::log_external_request(
+                    &self.db,
+                    EXTERNAL_LOG_KIND_OAUTH_REFRESH,
+                    TOKEN_URL,
+                    "POST",
+                    Some(&request_body_log),
+                    Some(status),
+                    Some(&response_body_log),
+                    Some(&err_msg),
+                    Some(user_id),
+                )
+                .await;
+                return Err(AppError::Upstream(err_msg));
+            }
+            Ok(body) => {
+                if body.code != 0 {
+                    let err_msg = body
+                        .message
+                        .clone()
+                        .unwrap_or_else(|| "bilibili refresh error".into());
+                    let code_err_body = serde_json::json!({
+                        "code": body.code,
+                        "message": body.message,
+                    })
+                    .to_string();
+                    let _ = crate::service::log_service::log_external_request(
+                        &self.db,
+                        EXTERNAL_LOG_KIND_OAUTH_REFRESH,
+                        TOKEN_URL,
+                        "POST",
+                        Some(&request_body_log),
+                        Some(status),
+                        Some(&code_err_body),
+                        Some(&err_msg),
+                        Some(user_id),
+                    )
+                    .await;
+                    return Err(AppError::Upstream(err_msg));
+                }
+                let data = body.data.ok_or(AppError::Upstream("no data".into()))?;
+                // 成功时落表用脱敏 JSON（不含 access_token/refresh_token）
+                let success_body_log = serde_json::json!({
+                    "code": body.code,
+                    "message": body.message,
+                    "data": {
+                        "expires_in": data.expires_in,
+                        "refresh_expires_in": data.refresh_expires_in,
+                    },
+                });
+                let success_body_str = success_body_log.to_string();
+                let success_body_truncated = if success_body_str.len() > OAUTH_REFRESH_RESPONSE_BODY_LOG_MAX {
+                    format!(
+                        "{}... (truncated)",
+                        crate::utils::truncate_utf8_at(
+                            &success_body_str,
+                            OAUTH_REFRESH_RESPONSE_BODY_LOG_MAX,
+                        )
+                    )
+                } else {
+                    success_body_str
+                };
+                let _ = crate::service::log_service::log_external_request(
+                    &self.db,
+                    EXTERNAL_LOG_KIND_OAUTH_REFRESH,
+                    TOKEN_URL,
+                    "POST",
+                    Some(&request_body_log),
+                    Some(status),
+                    Some(&success_body_truncated),
+                    None,
+                    Some(user_id),
+                )
+                .await;
+                let expires_at = Utc::now() + chrono::Duration::seconds(data.expires_in);
+                let refresh_expires_at = data
+                    .refresh_expires_in
+                    .map(|s| Utc::now() + chrono::Duration::seconds(s));
+                self.vault
+                    .update(
+                        token_id,
+                        &data.access_token,
+                        &data.refresh_token,
+                        expires_at,
+                        refresh_expires_at,
+                    )
+                    .await
+            }
+        }
     }
 }
