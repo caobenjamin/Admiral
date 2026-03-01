@@ -21,11 +21,7 @@ const RESPONSE_BODY_LOG_LIMIT: usize = 64 * 1024; // 64k
 const DB_BODY_MAX_LEN: usize = 65535;
 
 fn truncate_for_db(s: &str, max: usize) -> &str {
-    if s.len() <= max {
-        s
-    } else {
-        &s[..max]
-    }
+    crate::utils::truncate_utf8_at(s, max)
 }
 
 fn client_ip_from_headers(request: &Request<axum::body::Body>) -> Option<String> {

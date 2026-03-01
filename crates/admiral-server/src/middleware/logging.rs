@@ -35,12 +35,19 @@ pub async fn logging_layer(request: Request, next: Next) -> Response {
                 match String::from_utf8(bytes.to_vec()) {
                     Ok(s) => {
                         let display = if s.len() > REQUEST_BODY_DISPLAY_LIMIT {
-                            format!("{}... (truncated, total {} chars)", &s[..REQUEST_BODY_DISPLAY_LIMIT], s.len())
+                            format!(
+                                "{}... (truncated, total {} chars)",
+                                crate::utils::truncate_utf8_at(&s, REQUEST_BODY_DISPLAY_LIMIT),
+                                s.len()
+                            )
                         } else {
                             s.clone()
                         };
                         let db_str = if s.len() > REQUEST_BODY_DB_MAX_LEN {
-                            format!("{}... (truncated)", &s[..REQUEST_BODY_DB_MAX_LEN])
+                            format!(
+                                "{}... (truncated)",
+                                crate::utils::truncate_utf8_at(&s, REQUEST_BODY_DB_MAX_LEN)
+                            )
                         } else {
                             s
                         };

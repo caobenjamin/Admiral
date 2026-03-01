@@ -22,7 +22,11 @@ fn response_body_preview(bytes: &[u8], limit: usize) -> String {
     match String::from_utf8(bytes.to_vec()) {
         Ok(s) => {
             if s.len() > limit {
-                format!("{}... (truncated, {} chars)", &s[..limit], s.len())
+                format!(
+                    "{}... (truncated, {} chars)",
+                    crate::utils::truncate_utf8_at(&s, limit),
+                    s.len()
+                )
             } else {
                 s
             }
@@ -35,7 +39,7 @@ fn truncate_for_db(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        format!("{}... (truncated)", &s[..max])
+        format!("{}... (truncated)", crate::utils::truncate_utf8_at(s, max))
     }
 }
 

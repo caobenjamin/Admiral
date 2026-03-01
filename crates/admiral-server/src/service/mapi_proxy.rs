@@ -20,7 +20,11 @@ fn truncate_for_log(bytes: &[u8], limit: usize) -> String {
     match String::from_utf8(bytes.to_vec()) {
         Ok(s) => {
             if s.len() > limit {
-                format!("{}... (truncated, total {} chars)", &s[..limit], s.len())
+                format!(
+                    "{}... (truncated, total {} chars)",
+                    crate::utils::truncate_utf8_at(&s, limit),
+                    s.len()
+                )
             } else {
                 s
             }
@@ -73,12 +77,18 @@ pub async fn proxy(
         .map(|b| serde_json::to_string(b).unwrap_or_else(|_| "<invalid json>".into()))
         .unwrap_or_else(|| "(none)".to_string());
     let request_body_db = if request_body_log.len() > DB_BODY_MAX {
-        format!("{}... (truncated)", &request_body_log[..DB_BODY_MAX])
+        format!(
+            "{}... (truncated)",
+            crate::utils::truncate_utf8_at(&request_body_log, DB_BODY_MAX)
+        )
     } else {
         request_body_log.clone()
     };
     let req_body_display = if request_body_log.len() > BODY_LOG_LIMIT {
-        format!("{}... (truncated)", &request_body_log[..BODY_LOG_LIMIT])
+        format!(
+            "{}... (truncated)",
+            crate::utils::truncate_utf8_at(&request_body_log, BODY_LOG_LIMIT)
+        )
     } else {
         request_body_log
     };
@@ -138,7 +148,10 @@ pub async fn proxy(
     let bytes_slice = bytes.as_ref();
     let response_body_db = String::from_utf8_lossy(bytes_slice);
     let response_body_db = if response_body_db.len() > DB_BODY_MAX {
-        format!("{}... (truncated)", &response_body_db[..DB_BODY_MAX])
+        format!(
+            "{}... (truncated)",
+            crate::utils::truncate_utf8_at(&response_body_db, DB_BODY_MAX)
+        )
     } else {
         response_body_db.to_string()
     };

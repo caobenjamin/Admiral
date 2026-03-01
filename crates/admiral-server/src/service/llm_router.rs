@@ -11,7 +11,11 @@ fn body_preview(v: &Value, limit: usize) -> String {
     match serde_json::to_string(v) {
         Ok(s) => {
             if s.len() > limit {
-                format!("{}... (truncated, {} chars)", &s[..limit], s.len())
+                format!(
+                    "{}... (truncated, {} chars)",
+                    crate::utils::truncate_utf8_at(&s, limit),
+                    s.len()
+                )
             } else {
                 s
             }
@@ -27,7 +31,11 @@ fn bytes_preview(bytes: &[u8], limit: usize) -> String {
     match String::from_utf8(bytes.to_vec()) {
         Ok(s) => {
             if s.len() > limit {
-                format!("{}... (truncated, {} chars)", &s[..limit], s.len())
+                format!(
+                    "{}... (truncated, {} chars)",
+                    crate::utils::truncate_utf8_at(&s, limit),
+                    s.len()
+                )
             } else {
                 s
             }
