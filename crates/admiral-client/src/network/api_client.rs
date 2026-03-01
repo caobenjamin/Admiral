@@ -173,14 +173,43 @@ impl ApiClient {
         Ok(out)
     }
 
+    pub async fn oauth_subjects_list(
+        &self,
+        access_token: &str,
+        oauth_session_id: Option<uuid::Uuid>,
+    ) -> Result<Vec<admiral_types::api::BiliSubjectRecord>, ApiError> {
+        let path = match oauth_session_id {
+            Some(id) => format!("/api/v1/oauth/bilibili/subjects?oauth_session_id={}", id),
+            None => "/api/v1/oauth/bilibili/subjects".to_string(),
+        };
+        let resp = self
+            .request_with_token(
+                reqwest::Method::GET,
+                &path,
+                Some(access_token),
+                None,
+            )
+            .await?;
+        let out: Vec<admiral_types::api::BiliSubjectRecord> = resp.json().await?;
+        Ok(out)
+    }
+
     pub async fn oauth_accounts_list(
         &self,
         access_token: &str,
         oauth_session_id: Option<uuid::Uuid>,
+        subject_type: i32,
+        subject_id: i32,
     ) -> Result<OAuthAccountsResponse, ApiError> {
         let path = match oauth_session_id {
-            Some(id) => format!("/api/v1/oauth/bilibili/accounts?oauth_session_id={}", id),
-            None => "/api/v1/oauth/bilibili/accounts".to_string(),
+            Some(id) => format!(
+                "/api/v1/oauth/bilibili/accounts?oauth_session_id={}&subject_type={}&subject_id={}",
+                id, subject_type, subject_id
+            ),
+            None => format!(
+                "/api/v1/oauth/bilibili/accounts?subject_type={}&subject_id={}",
+                subject_type, subject_id
+            ),
         };
         let resp = self
             .request_with_token(

@@ -8,6 +8,7 @@ mod m20240219_000003_create_ad_account_bindings;
 mod m20240220_000004_oauth_tokens_add_bid_username;
 mod m20240224_000005_create_knowledge_chunks;
 mod m20240225_000006_create_request_log_tables;
+mod m20240301_000007_oauth_subjects_and_bindings_subject;
 
 pub struct Migrator;
 
@@ -21,6 +22,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20240220_000004_oauth_tokens_add_bid_username::Migration),
             Box::new(m20240224_000005_create_knowledge_chunks::Migration),
             Box::new(m20240225_000006_create_request_log_tables::Migration),
+            Box::new(m20240301_000007_oauth_subjects_and_bindings_subject::Migration),
         ]
     }
 }

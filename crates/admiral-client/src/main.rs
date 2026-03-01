@@ -23,6 +23,7 @@ fn main() {
             tauri_bridge::oauth_initiate,
             tauri_bridge::oauth_status,
             tauri_bridge::oauth_bindings_list,
+            tauri_bridge::oauth_subjects_list,
             tauri_bridge::oauth_accounts_list,
             tauri_bridge::oauth_bind_accounts,
             tauri_bridge::oauth_delete_session,

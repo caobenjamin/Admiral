@@ -39,6 +39,12 @@ export interface InitiateResponse {
   authorization_url: string;
 }
 
+/** B 站 OAuth 返回的 subject（组织），拉取广告主列表前需先选一个 */
+export interface BiliSubjectRecord {
+  subject_type: number;
+  subject_id: number;
+}
+
 export interface BiliAdvertiserRecord {
   account_id: number;
   account_name: string | null;

@@ -71,6 +71,20 @@ pub async fn bindings_list(
     Ok(Json(out))
 }
 
+pub async fn subjects_list(
+    State(state): State<AppState>,
+    auth_user: crate::middleware::auth_guard::AuthUser,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<Vec<admiral_types::api::BiliSubjectRecord>>> {
+    let oauth = state
+        .oauth
+        .as_ref()
+        .ok_or(crate::error::AppError::BadRequest("OAuth not configured".into()))?;
+    let oauth_session_id = params.get("oauth_session_id").and_then(|s| Uuid::parse_str(s).ok());
+    let list = oauth.list_subjects(auth_user.0, oauth_session_id).await?;
+    Ok(Json(list))
+}
+
 pub async fn accounts_list(
     State(state): State<AppState>,
     auth_user: crate::middleware::auth_guard::AuthUser,
@@ -81,7 +95,25 @@ pub async fn accounts_list(
         .as_ref()
         .ok_or(crate::error::AppError::BadRequest("OAuth not configured".into()))?;
     let oauth_session_id = params.get("oauth_session_id").and_then(|s| Uuid::parse_str(s).ok());
-    let resp = oauth.list_advertisers(auth_user.0, oauth_session_id).await?;
+    let subject_type = params
+        .get("subject_type")
+        .and_then(|s| s.parse::<i32>().ok())
+        .ok_or_else(|| {
+            crate::error::AppError::BadRequest(
+                "subject_type is required; call GET /api/v1/oauth/bilibili/subjects first".into(),
+            )
+        })?;
+    let subject_id = params
+        .get("subject_id")
+        .and_then(|s| s.parse::<i32>().ok())
+        .ok_or_else(|| {
+            crate::error::AppError::BadRequest(
+                "subject_id is required; call GET /api/v1/oauth/bilibili/subjects first".into(),
+            )
+        })?;
+    let resp = oauth
+        .list_advertisers(auth_user.0, oauth_session_id, subject_type, subject_id)
+        .await?;
     if resp.code != 0 {
         return Err(crate::error::AppError::Upstream(
             resp.message.unwrap_or_else(|| "bilibili error".into()),
@@ -104,7 +136,14 @@ pub async fn bind_accounts(
         .as_ref()
         .ok_or(crate::error::AppError::BadRequest("OAuth not configured".into()))?;
     oauth
-        .bind_accounts(auth_user.0, req.oauth_token_id, req.account_ids, None)
+        .bind_accounts(
+            auth_user.0,
+            req.oauth_token_id,
+            req.subject_type,
+            req.subject_id,
+            req.account_ids,
+            None,
+        )
         .await?;
     Ok(axum::http::StatusCode::CREATED)
 }

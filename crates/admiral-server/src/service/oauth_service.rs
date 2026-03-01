@@ -1,8 +1,8 @@
 //! Bilibili OAuth: initiate, callback (exchange token), status, delete, list advertisers, bind accounts.
 
-use crate::entities::ad_account_binding;
+use crate::entities::{ad_account_binding, oauth_subject};
 use crate::error::{AppError, Result};
-use admiral_types::api::{BoundAccountRecord, InitiateResponse, TokenMeta};
+use admiral_types::api::{BoundAccountRecord, BiliSubjectRecord, InitiateResponse, TokenMeta};
 use crate::service::token_vault::TokenVault;
 use chrono::Utc;
 use moka::future::Cache;
@@ -16,12 +16,14 @@ use uuid::Uuid;
 const AUTH_URL: &str = "https://ad.bilibili.com/developer/developer-authorization";
 const TOKEN_URL: &str = "https://cm.bilibili.com/takumi/api/open_api/oauth2/token";
 const USERINFO_URL: &str = "https://cm.bilibili.com/takumi/api/open_api/oauth2/userinfo";
+const SUBJECTS_URL: &str = "https://cm.bilibili.com/takumi/api/open_api/oauth2/subjects";
 const ADVERTISERS_URL: &str = "https://cm.bilibili.com/takumi/api/open_api/oauth2/advertisers";
 
 /// external_request_log 中 oauth 各类请求的 kind
 const EXTERNAL_LOG_KIND_OAUTH_REFRESH: &str = "oauth_refresh";
 const EXTERNAL_LOG_KIND_OAUTH_TOKEN_EXCHANGE: &str = "oauth_token_exchange";
 const EXTERNAL_LOG_KIND_OAUTH_USERINFO: &str = "oauth_userinfo";
+const EXTERNAL_LOG_KIND_OAUTH_SUBJECTS: &str = "oauth_subjects";
 const EXTERNAL_LOG_KIND_OAUTH_ADVERTISERS: &str = "oauth_advertisers";
 /// 刷新响应体落表最大长度（字节），UTF-8 安全截断
 const OAUTH_REFRESH_RESPONSE_BODY_LOG_MAX: usize = 4096;
@@ -107,6 +109,19 @@ pub struct BiliAdvertisersResponse {
     pub code: i32,
     pub message: Option<String>,
     pub data: Option<BiliAdvertisersData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BiliSubjectItem {
+    pub subject_type: i32,
+    pub subject_id: i32,
+}
+
+#[derive(Debug, Deserialize)]
+struct BiliSubjectsResponse {
+    pub code: i32,
+    pub message: Option<String>,
+    pub data: Option<Vec<BiliSubjectItem>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -429,11 +444,135 @@ impl OauthService {
         self.vault.delete(token_id, user_id).await
     }
 
-    /// List advertisers (accounts) from B站 for the given token. If oauth_session_id is None, use latest token for user.
+    /// List subjects (组织) for the given token. 拉取后写入 oauth_subjects 表。
+    pub async fn list_subjects(
+        &self,
+        user_id: Uuid,
+        oauth_session_id: Option<Uuid>,
+    ) -> Result<Vec<BiliSubjectRecord>> {
+        let token_id = match oauth_session_id {
+            Some(id) => id,
+            None => {
+                let list = self.vault.list_by_user(user_id).await?;
+                list.into_iter()
+                    .next()
+                    .map(|m| m.id)
+                    .ok_or(AppError::BadRequest("no OAuth session; please authorize first".into()))?
+            }
+        };
+        let stored = self
+            .vault
+            .get(token_id)
+            .await?
+            .ok_or(AppError::NotFound("oauth_token".into()))?;
+        let request_url = format!("{}?page=1&size=100", SUBJECTS_URL);
+        let resp = self
+            .http
+            .get(SUBJECTS_URL)
+            .query(&[("page", "1"), ("size", "100")])
+            .header("Authorization", format!("Bearer {}", stored.access_token))
+            .send()
+            .await
+            .map_err(|e| AppError::Upstream(e.to_string()))?;
+        let status = resp.status().as_u16();
+        let text = resp.text().await.map_err(|e| AppError::Upstream(e.to_string()))?;
+        let response_body_log = if text.len() > OAUTH_CALLBACK_RESPONSE_BODY_LOG_MAX {
+            format!(
+                "{}... (truncated)",
+                crate::utils::truncate_utf8_at(&text, OAUTH_CALLBACK_RESPONSE_BODY_LOG_MAX)
+            )
+        } else {
+            text.clone()
+        };
+        let body_result: Result<BiliSubjectsResponse, _> = serde_json::from_str(&text);
+        match body_result {
+            Err(e) => {
+                let err_msg = format!("error decoding response body: {}", e);
+                let _ = crate::service::log_service::log_external_request(
+                    &self.db,
+                    EXTERNAL_LOG_KIND_OAUTH_SUBJECTS,
+                    &request_url,
+                    "GET",
+                    None,
+                    Some(status),
+                    Some(&response_body_log),
+                    Some(&err_msg),
+                    Some(user_id),
+                )
+                .await;
+                Err(AppError::Upstream(err_msg))
+            }
+            Ok(body) => {
+                if body.code != 0 {
+                    let err_msg = body
+                        .message
+                        .clone()
+                        .unwrap_or_else(|| "bilibili subjects error".into());
+                    let _ = crate::service::log_service::log_external_request(
+                        &self.db,
+                        EXTERNAL_LOG_KIND_OAUTH_SUBJECTS,
+                        &request_url,
+                        "GET",
+                        None,
+                        Some(status),
+                        Some(&response_body_log),
+                        Some(&err_msg),
+                        Some(user_id),
+                    )
+                    .await;
+                    return Err(AppError::Upstream(err_msg));
+                }
+                let _ = crate::service::log_service::log_external_request(
+                    &self.db,
+                    EXTERNAL_LOG_KIND_OAUTH_SUBJECTS,
+                    &request_url,
+                    "GET",
+                    None,
+                    Some(status),
+                    Some(&response_body_log),
+                    None,
+                    Some(user_id),
+                )
+                .await;
+                let items = body.data.unwrap_or_default();
+                for item in &items {
+                    let existing = oauth_subject::Entity::find()
+                        .filter(oauth_subject::Column::OauthTokenId.eq(token_id))
+                        .filter(oauth_subject::Column::SubjectType.eq(item.subject_type))
+                        .filter(oauth_subject::Column::SubjectId.eq(item.subject_id))
+                        .one(&self.db)
+                        .await?;
+                    if existing.is_none() {
+                        oauth_subject::ActiveModel {
+                            id: Set(Uuid::new_v4()),
+                            oauth_token_id: Set(token_id),
+                            subject_type: Set(item.subject_type),
+                            subject_id: Set(item.subject_id),
+                            created_at: Set(Utc::now().into()),
+                            ..Default::default()
+                        }
+                        .insert(&self.db)
+                        .await?;
+                    }
+                }
+                Ok(items
+                    .into_iter()
+                    .map(|i| BiliSubjectRecord {
+                        subject_type: i.subject_type,
+                        subject_id: i.subject_id,
+                    })
+                    .collect())
+            }
+        }
+    }
+
+    /// List advertisers (accounts) from B站 for the given token and subject. 必须先选 subject。
     pub async fn list_advertisers(
         &self,
         user_id: Uuid,
         oauth_session_id: Option<Uuid>,
+        subject_type: i32,
+        subject_id: i32,
     ) -> Result<BiliAdvertisersResponse> {
         let token_id = match oauth_session_id {
             Some(id) => id,
@@ -450,11 +589,19 @@ impl OauthService {
             .get(token_id)
             .await?
             .ok_or(AppError::NotFound("oauth_token".into()))?;
-        let request_url = format!("{}?page=1&size=100", ADVERTISERS_URL);
+        let request_url = format!(
+            "{}?page=1&size=100&subject_type={}&subject_id={}",
+            ADVERTISERS_URL, subject_type, subject_id
+        );
         let resp = self
             .http
             .get(ADVERTISERS_URL)
-            .query(&[("page", "1"), ("size", "100")])
+            .query(&[
+                ("page", "1"),
+                ("size", "100"),
+                ("subject_type", subject_type.to_string().as_str()),
+                ("subject_id", subject_id.to_string().as_str()),
+            ])
             .header("Authorization", format!("Bearer {}", stored.access_token))
             .send()
             .await
@@ -568,11 +715,13 @@ impl OauthService {
         }
     }
 
-    /// Bind account_ids to the given oauth_token for this user.
+    /// Bind account_ids to the given oauth_token for this user，并记录所选 subject。
     pub async fn bind_accounts(
         &self,
         user_id: Uuid,
         oauth_token_id: Uuid,
+        subject_type: i32,
+        subject_id: i32,
         account_ids: Vec<i64>,
         account_names: Option<Vec<String>>,
     ) -> Result<()> {
@@ -617,6 +766,8 @@ impl OauthService {
                 let mut active: ad_account_binding::ActiveModel = ex.into();
                 active.oauth_token_id = Set(oauth_token_id);
                 active.account_name = Set(account_name);
+                active.subject_type = Set(Some(subject_type));
+                active.subject_id = Set(Some(subject_id));
                 active.save(&self.db).await?;
             } else {
                 ad_account_binding::ActiveModel {
@@ -626,6 +777,8 @@ impl OauthService {
                     account_id: Set(account_id_str),
                     oauth_token_id: Set(oauth_token_id),
                     account_name: Set(account_name),
+                    subject_type: Set(Some(subject_type)),
+                    subject_id: Set(Some(subject_id)),
                     created_at: Set(now.into()),
                     ..Default::default()
                 }

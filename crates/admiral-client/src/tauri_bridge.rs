@@ -84,13 +84,27 @@ pub async fn oauth_bindings_list(
 }
 
 #[tauri::command]
+pub async fn oauth_subjects_list(
+    state: tauri::State<'_, AppState>,
+    oauth_session_id: Option<String>,
+) -> Result<Vec<admiral_types::api::BiliSubjectRecord>, String> {
+    let id = oauth_session_id
+        .and_then(|s| uuid::Uuid::parse_str(&s).ok());
+    crate::commands::oauth::oauth_subjects_list(&state.auth, id)
+        .await
+        .map_err(err_string)
+}
+
+#[tauri::command]
 pub async fn oauth_accounts_list(
     state: tauri::State<'_, AppState>,
     oauth_session_id: Option<String>,
+    subject_type: i32,
+    subject_id: i32,
 ) -> Result<admiral_types::api::OAuthAccountsResponse, String> {
     let id = oauth_session_id
         .and_then(|s| uuid::Uuid::parse_str(&s).ok());
-    crate::commands::oauth::oauth_accounts_list(&state.auth, id)
+    crate::commands::oauth::oauth_accounts_list(&state.auth, id, subject_type, subject_id)
         .await
         .map_err(err_string)
 }

@@ -23,6 +23,7 @@ pub fn app(state: AppState) -> Router {
         .route("/initiate", post(oauth::initiate))
         .route("/callback", get(oauth::callback))
         .route("/status", get(oauth::status))
+        .route("/subjects", get(oauth::subjects_list))
         .route("/bindings", get(oauth::bindings_list))
         .route("/accounts", get(oauth::accounts_list))
         .route("/bind-accounts", post(oauth::bind_accounts))

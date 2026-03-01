@@ -10,6 +10,9 @@ pub struct Model {
     pub account_id: String,
     pub oauth_token_id: Uuid,
     pub account_name: Option<String>,
+    /// 绑定时所选组织，用于后续 MAPI 等查询
+    pub subject_type: Option<i32>,
+    pub subject_id: Option<i32>,
     pub created_at: DateTimeWithTimeZone,
 }
 

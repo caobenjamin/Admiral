@@ -4,7 +4,8 @@
 use crate::commands::auth::AuthContext;
 use crate::network::api_client::ApiError;
 use admiral_types::api::{
-    BindAccountsRequest, BoundAccountRecord, InitiateResponse, OAuthAccountsResponse, TokenMeta,
+    BindAccountsRequest, BiliSubjectRecord, BoundAccountRecord, InitiateResponse,
+    OAuthAccountsResponse, TokenMeta,
 };
 
 fn get_access_token(ctx: &AuthContext) -> Result<String, ApiError> {
@@ -31,13 +32,25 @@ pub async fn oauth_bindings_list(
     ctx.api_client.oauth_bindings_list(&token).await
 }
 
+pub async fn oauth_subjects_list(
+    ctx: &AuthContext,
+    oauth_session_id: Option<uuid::Uuid>,
+) -> Result<Vec<BiliSubjectRecord>, ApiError> {
+    let token = get_access_token(ctx)?;
+    ctx.api_client
+        .oauth_subjects_list(&token, oauth_session_id)
+        .await
+}
+
 pub async fn oauth_accounts_list(
     ctx: &AuthContext,
     oauth_session_id: Option<uuid::Uuid>,
+    subject_type: i32,
+    subject_id: i32,
 ) -> Result<OAuthAccountsResponse, ApiError> {
     let token = get_access_token(ctx)?;
     ctx.api_client
-        .oauth_accounts_list(&token, oauth_session_id)
+        .oauth_accounts_list(&token, oauth_session_id, subject_type, subject_id)
         .await
 }
 

@@ -4,6 +4,7 @@ import * as tauri from "@/lib/tauri";
 import { useToastStore } from "@/stores/toastStore";
 import type {
   TokenMeta,
+  BiliSubjectRecord,
   OAuthAccountsResponse,
   BoundAccountRecord,
   BiliAdvertiserRecord,
@@ -95,7 +96,7 @@ function ConfirmUnbindDialog({
   );
 }
 
-/** 新增账户弹窗：按 oauth_session_id 拉取该 token 下的账户列表 */
+/** 新增账户弹窗：先选 subject（组织），再拉取该 subject 下账户列表并绑定 */
 function BindAccountModal({
   open,
   onClose,
@@ -108,43 +109,79 @@ function BindAccountModal({
   onSuccess: () => void;
 }) {
   const showToast = useToastStore((s) => s.show);
+  const [subjects, setSubjects] = useState<BiliSubjectRecord[]>([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
+  const [selectedSubject, setSelectedSubject] = useState<BiliSubjectRecord | null>(null);
   const [accounts, setAccounts] = useState<OAuthAccountsResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [accountsLoading, setAccountsLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedAccountIds, setSelectedAccountIds] = useState<number[]>([]);
   const [bindLoading, setBindLoading] = useState(false);
 
-  const loadAccounts = useCallback(async () => {
+  const loadSubjects = useCallback(async () => {
     if (!oauthSessionId) return;
-    setLoading(true);
+    setSubjectsLoading(true);
     setError("");
     try {
-      const data = await tauri.oauthAccountsList(oauthSessionId);
+      const list = await tauri.oauthSubjectsList(oauthSessionId);
+      setSubjects(list);
+      setSelectedSubject(null);
+      setAccounts(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSubjectsLoading(false);
+    }
+  }, [oauthSessionId]);
+
+  const loadAccounts = useCallback(async () => {
+    if (!oauthSessionId || !selectedSubject) return;
+    setAccountsLoading(true);
+    setError("");
+    try {
+      const data = await tauri.oauthAccountsList(
+        oauthSessionId,
+        selectedSubject.subject_type,
+        selectedSubject.subject_id
+      );
       setAccounts(data);
       setSelectedAccountIds([]);
     } catch (e) {
       setError(String(e));
     } finally {
-      setLoading(false);
+      setAccountsLoading(false);
     }
-  }, [oauthSessionId]);
+  }, [oauthSessionId, selectedSubject]);
 
   useEffect(() => {
     if (open && oauthSessionId) {
-      loadAccounts();
+      loadSubjects();
     } else {
+      setSubjects([]);
+      setSelectedSubject(null);
       setAccounts(null);
       setError("");
       setSelectedAccountIds([]);
     }
-  }, [open, oauthSessionId, loadAccounts]);
+  }, [open, oauthSessionId, loadSubjects]);
+
+  useEffect(() => {
+    if (open && oauthSessionId && selectedSubject) {
+      loadAccounts();
+    }
+  }, [open, oauthSessionId, selectedSubject?.subject_type, selectedSubject?.subject_id, loadAccounts]);
 
   const handleBind = async () => {
-    if (!oauthSessionId || selectedAccountIds.length === 0) return;
+    if (!oauthSessionId || !selectedSubject || selectedAccountIds.length === 0) return;
     setBindLoading(true);
     setError("");
     try {
-      await tauri.oauthBindAccounts(oauthSessionId, selectedAccountIds);
+      await tauri.oauthBindAccounts(
+        oauthSessionId,
+        selectedSubject.subject_type,
+        selectedSubject.subject_id,
+        selectedAccountIds
+      );
       showToast("绑定成功", "success");
       onSuccess();
       onClose();
@@ -226,6 +263,49 @@ function BindAccountModal({
             <p style={{ color: "var(--admiral-text-secondary)", fontSize: 14 }}>
               请先选择授权来源（BID / 用户名）。
             </p>
+          ) : subjectsLoading ? (
+            <p style={{ color: "var(--admiral-text-secondary)", fontSize: 14 }}>
+              正在获取组织列表…
+            </p>
+          ) : !selectedSubject ? (
+            <>
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "var(--admiral-text-secondary)",
+                  marginBottom: 12,
+                }}
+              >
+                请先选择一个组织（subject），再拉取该组织下的广告主账户。
+              </p>
+              {subjects.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {subjects.map((s) => (
+                    <button
+                      key={`${s.subject_type}-${s.subject_id}`}
+                      type="button"
+                      onClick={() => setSelectedSubject(s)}
+                      style={{
+                        padding: "12px 16px",
+                        textAlign: "left",
+                        fontSize: 14,
+                        border: "1px solid var(--admiral-border)",
+                        borderRadius: "var(--admiral-radius-input)",
+                        backgroundColor: "var(--admiral-card)",
+                        color: "var(--admiral-text-primary)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      组织 type={s.subject_type} id={s.subject_id}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ color: "var(--admiral-text-secondary)", fontSize: 14 }}>
+                  当前授权下无可用组织。
+                </p>
+              )}
+            </>
           ) : error ? (
             <div
               style={{
@@ -239,12 +319,30 @@ function BindAccountModal({
             >
               {error}
             </div>
-          ) : loading ? (
+          ) : accountsLoading ? (
             <p style={{ color: "var(--admiral-text-secondary)", fontSize: 14 }}>
               正在获取可绑定账户列表…
             </p>
           ) : accounts && accounts.records.length > 0 ? (
             <>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <p style={{ fontSize: 13, color: "var(--admiral-text-secondary)", margin: 0 }}>
+                  当前组织：type={selectedSubject.subject_type} id={selectedSubject.subject_id}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedSubject(null); setAccounts(null); setError(""); }}
+                  style={{
+                    fontSize: 13,
+                    color: "var(--admiral-text-secondary)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  更换组织
+                </button>
+              </div>
               <p
                 style={{
                   fontSize: 13,

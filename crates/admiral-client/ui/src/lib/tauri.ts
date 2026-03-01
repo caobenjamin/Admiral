@@ -7,6 +7,7 @@ import type {
   LicenseResponse,
   InitiateResponse,
   TokenMeta,
+  BiliSubjectRecord,
   OAuthAccountsResponse,
 } from "./types";
 
@@ -57,12 +58,36 @@ export async function oauthBindingsList(): Promise<
   return invoke("oauth_bindings_list");
 }
 
-export async function oauthAccountsList(oauthSessionId?: string): Promise<OAuthAccountsResponse> {
-  return invoke("oauth_accounts_list", { oauthSessionId });
+export async function oauthSubjectsList(oauthSessionId?: string): Promise<BiliSubjectRecord[]> {
+  return invoke("oauth_subjects_list", { oauthSessionId });
 }
 
-export async function oauthBindAccounts(oauthTokenId: string, accountIds: number[]): Promise<void> {
-  return invoke("oauth_bind_accounts", { req: { oauth_token_id: oauthTokenId, account_ids: accountIds } });
+export async function oauthAccountsList(
+  oauthSessionId: string | undefined,
+  subjectType: number,
+  subjectId: number
+): Promise<OAuthAccountsResponse> {
+  return invoke("oauth_accounts_list", {
+    oauthSessionId,
+    subjectType,
+    subjectId,
+  });
+}
+
+export async function oauthBindAccounts(
+  oauthTokenId: string,
+  subjectType: number,
+  subjectId: number,
+  accountIds: number[]
+): Promise<void> {
+  return invoke("oauth_bind_accounts", {
+    req: {
+      oauth_token_id: oauthTokenId,
+      subject_type: subjectType,
+      subject_id: subjectId,
+      account_ids: accountIds,
+    },
+  });
 }
 
 export async function oauthDeleteSession(sessionId: string): Promise<void> {

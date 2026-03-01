@@ -75,9 +75,19 @@ pub struct TokenMeta {
     pub user_name: Option<String>,
 }
 
+/// B 站 OAuth 返回的 subject（组织），拉取广告主列表前需先选一个。
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BiliSubjectRecord {
+    pub subject_type: i32,
+    pub subject_id: i32,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BindAccountsRequest {
     pub oauth_token_id: Uuid,
+    /// 绑定时必须带所选 subject，以便后续 MAPI 使用
+    pub subject_type: i32,
+    pub subject_id: i32,
     pub account_ids: Vec<i64>,
 }
 
