@@ -29,11 +29,12 @@ export interface TaskMeta {
 }
 
 function taskToMeta(t: Task): TaskMeta {
+  const type = t.task_type === "cron" ? "scheduled" : t.task_type;
   return {
     id: t.id,
     name: t.name,
     status: t.status as TaskStatus,
-    type: t.task_type,
+    type,
     updated_at: t.updated_at,
     last_run_result: undefined,
   };

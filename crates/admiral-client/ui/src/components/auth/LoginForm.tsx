@@ -41,58 +41,72 @@ export function LoginForm() {
     width: "100%",
     border: "1px solid var(--admiral-border)",
     borderRadius: "var(--admiral-radius-input)",
-    padding: "8px 12px",
+    padding: "9px 12px",
     fontSize: 14,
     color: "var(--admiral-text-primary)",
     outline: "none",
+    backgroundColor: "#ffffff",
   };
   const inputError = {
     borderColor: "var(--color-danger)",
-    boxShadow: "0 0 0 2px rgba(245, 108, 108, 0.3)",
+    boxShadow: "0 0 0 2px rgba(220, 38, 38, 0.16)",
   };
   const inputFocus = {
     borderColor: "var(--color-primary)",
-    boxShadow: "0 0 0 2px rgba(64, 158, 255, 0.3)",
+    boxShadow: "0 0 0 2px rgba(15, 108, 189, 0.16)",
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: "var(--admiral-bg)" }}>
-      <div
-        className={`w-full max-w-sm p-6 rounded-lg shadow ${error ? "login-shake" : ""}`}
-        style={{
-          backgroundColor: "var(--admiral-card)",
-          borderRadius: "var(--admiral-radius-card)",
-          boxShadow: "var(--admiral-shadow-card)",
-        }}
-      >
-        <div className="text-center mb-6">
-          <h1 className="text-xl font-semibold mb-1" style={{ color: "var(--admiral-text-primary)", fontSize: 18 }}>
-            ⚓ Admiral
-          </h1>
-          <p className="text-sm" style={{ color: "var(--admiral-text-secondary)" }}>
-            广告智能优化平台
-          </p>
+    <div className="auth-page">
+      <section className="auth-hero">
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <span className="admiral-chip admiral-chip-primary" style={{ background: "rgba(255,255,255,0.14)", color: "#eef7ff", borderColor: "rgba(255,255,255,0.25)" }}>
+            Admiral v1.0
+          </span>
         </div>
-        <div className="flex mb-4" style={{ borderBottomColor: "var(--admiral-border)", borderBottomWidth: 1 }}>
+        <h1 style={{ fontSize: 30, lineHeight: 1.25, fontWeight: 700, margin: 0 }}>广告操作的智能指挥系统</h1>
+        <p style={{ margin: "12px 0 0", fontSize: 14, opacity: 0.92 }}>
+          通过自然语言任务编排、Dry Run/Test Run 分级确认、Agent 对话追踪，稳定完成广告执行闭环。
+        </p>
+        <div style={{ marginTop: 20, display: "grid", gap: 10 }}>
+          <div style={{ padding: "10px 12px", borderRadius: 10, backgroundColor: "rgba(255,255,255,0.14)", border: "1px solid rgba(255,255,255,0.2)" }}>
+            任务全流程可追溯：规划、预演、测试、部署
+          </div>
+          <div style={{ padding: "10px 12px", borderRadius: 10, backgroundColor: "rgba(255,255,255,0.14)", border: "1px solid rgba(255,255,255,0.2)" }}>
+            平台授权与账户绑定分层管理
+          </div>
+          <div style={{ padding: "10px 12px", borderRadius: 10, backgroundColor: "rgba(255,255,255,0.14)", border: "1px solid rgba(255,255,255,0.2)" }}>
+            本地执行引擎，关键状态透明可控
+          </div>
+        </div>
+      </section>
+
+      <section className={`auth-card ${error ? "login-shake" : ""}`}>
+        <div style={{ marginBottom: 14 }}>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--admiral-text-primary)" }}>账号访问</h2>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--admiral-text-secondary)" }}>登录或注册后进入 Admiral 工作台</p>
+        </div>
+
+        <div className="auth-tabs">
           <button
             type="button"
-            className={`flex-1 py-2 text-sm ${tab === "login" ? "border-b-2 text-primary" : ""}`}
-            style={tab === "login" ? { borderBottomColor: "var(--color-primary)" } : { color: "var(--admiral-text-secondary)" }}
+            className={`auth-tab ${tab === "login" ? "auth-tab-active" : ""}`}
             onClick={() => setTab("login")}
           >
             登录
           </button>
           <button
             type="button"
-            className={`flex-1 py-2 text-sm ${tab === "register" ? "border-b-2 text-primary" : ""}`}
-            style={tab === "register" ? { borderBottomColor: "var(--color-primary)" } : { color: "var(--admiral-text-secondary)" }}
+            className={`auth-tab ${tab === "register" ? "auth-tab-active" : ""}`}
             onClick={() => setTab("register")}
           >
             注册
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <label className="block text-sm font-medium text-[var(--admiral-text-primary)] mb-1">邮箱</label>
+
+        <form onSubmit={handleSubmit} style={{ display: "grid", gap: 10 }}>
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--admiral-text-primary)" }}>邮箱</span>
           <input
             type="email"
             placeholder="请输入邮箱"
@@ -114,7 +128,9 @@ export function LoginForm() {
             }}
             required
           />
-          <label className="block text-sm font-medium text-[var(--admiral-text-primary)] mb-1">密码</label>
+          </label>
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--admiral-text-primary)" }}>密码</span>
           <input
             type="password"
             placeholder="请输入密码（至少 6 位）"
@@ -137,9 +153,11 @@ export function LoginForm() {
             required
             minLength={6}
           />
+          </label>
           {tab === "register" && (
             <>
-              <label className="block text-sm font-medium text-[var(--admiral-text-primary)] mb-1">姓名</label>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--admiral-text-primary)" }}>姓名</span>
               <input
                 type="text"
                 placeholder="请输入姓名"
@@ -148,7 +166,9 @@ export function LoginForm() {
                 style={inputBase}
                 required
               />
-              <label className="block text-sm font-medium text-[var(--admiral-text-primary)] mb-1">公司（选填）</label>
+              </label>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--admiral-text-primary)" }}>公司（选填）</span>
               <input
                 type="text"
                 placeholder="请输入公司"
@@ -156,7 +176,9 @@ export function LoginForm() {
                 onChange={(e) => setCompany(e.target.value)}
                 style={inputBase}
               />
-              <label className="block text-sm font-medium text-[var(--admiral-text-primary)] mb-1">邀请码</label>
+              </label>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--admiral-text-primary)" }}>邀请码</span>
               <input
                 type="text"
                 placeholder="请输入邀请码"
@@ -168,19 +190,36 @@ export function LoginForm() {
                 }}
                 required
               />
+              </label>
             </>
           )}
-          {error && <p className="text-sm" style={{ color: "var(--color-danger)" }}>{error}</p>}
+
+          {error && (
+            <div
+              style={{
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: "1px solid rgba(220, 38, 38, 0.4)",
+                backgroundColor: "#fef2f2",
+                color: "var(--color-danger)",
+                fontSize: 13,
+              }}
+            >
+              {error}
+            </div>
+          )}
+
           {serverUrl && (
-            <p className="text-xs" style={{ color: "var(--admiral-text-placeholder)" }} title="当前连接的服务端地址，若错误请修改客户端配置文件后重启">
+            <p style={{ margin: 0, fontSize: 12, color: "var(--admiral-text-placeholder)" }} title="当前连接的服务端地址，若错误请修改客户端配置文件后重启">
               服务端: {serverUrl}
             </p>
           )}
-          <button type="submit" disabled={loading} className="btn btn-primary w-full btn-large">
-            {loading ? "提交中…" : tab === "login" ? "登 录" : "注 册"}
+
+          <button type="submit" disabled={loading} className="btn btn-primary btn-large" style={{ width: "100%", marginTop: 4 }}>
+            {loading ? "提交中..." : tab === "login" ? "登 录" : "注 册"}
           </button>
         </form>
-      </div>
+      </section>
     </div>
   );
 }

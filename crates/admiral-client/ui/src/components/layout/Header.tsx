@@ -4,28 +4,28 @@ import { useAuthStore } from "@/stores/authStore";
 import { useAuth } from "@/hooks/useAuth";
 import { useUiStore, type ConnectionStatus } from "@/stores/uiStore";
 
-const HEADER_HEIGHT = 48;
+const HEADER_HEIGHT = 56;
 
-function StatusDot({ status }: { status: ConnectionStatus }) {
+function StatusBadge({ status }: { status: ConnectionStatus }) {
   const dotColor =
     status === "online"
       ? "var(--color-success)"
       : status === "connecting"
         ? "var(--color-warning)"
-        : "#9ca3af";
+        : "#9fb3c8";
+
   const label =
     status === "online" ? "在线" : status === "connecting" ? "连接中" : "离线";
+
+  const badgeClass =
+    status === "online"
+      ? "admiral-chip admiral-chip-success"
+      : status === "connecting"
+        ? "admiral-chip admiral-chip-warning"
+        : "admiral-chip";
+
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        fontSize: 14,
-        color: "var(--admiral-text-secondary)",
-      }}
-      title={label}
-    >
+    <span className={badgeClass} title={label}>
       <span
         style={{
           width: 8,
@@ -41,7 +41,6 @@ function StatusDot({ status }: { status: ConnectionStatus }) {
   );
 }
 
-/** Logo 锚点图标：固定 20x20，防止被撑大 */
 function LogoIcon() {
   return (
     <svg
@@ -49,11 +48,12 @@ function LogoIcon() {
       height={20}
       viewBox="0 0 24 24"
       fill="none"
-      stroke="var(--color-primary)"
+      stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
       style={{ flexShrink: 0 }}
+      aria-hidden
     >
       <path d="M12 22V8" />
       <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
@@ -62,7 +62,6 @@ function LogoIcon() {
   );
 }
 
-/** 设置齿轮图标：固定 16x16 */
 function SettingsIcon() {
   return (
     <svg
@@ -74,6 +73,7 @@ function SettingsIcon() {
       strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
+      aria-hidden
     >
       <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
       <circle cx="12" cy="12" r="3" />
@@ -90,14 +90,16 @@ export function Header() {
 
   useEffect(() => {
     const onOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node))
-        setAccountOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) setAccountOpen(false);
     };
+
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") setAccountOpen(false);
     };
+
     document.addEventListener("click", onOutside);
     document.addEventListener("keydown", onEsc);
+
     return () => {
       document.removeEventListener("click", onOutside);
       document.removeEventListener("keydown", onEsc);
@@ -113,55 +115,45 @@ export function Header() {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        paddingLeft: 16,
-        paddingRight: 16,
+        padding: "0 16px",
         borderBottom: "1px solid var(--admiral-border)",
-        backgroundColor: "var(--admiral-card)",
-        boxShadow: "var(--admiral-shadow-card)",
+        background: "linear-gradient(180deg, #ffffff 0%, #f7fbff 100%)",
       }}
     >
-      {/* 左：Logo + 产品名 + 连接状态，单行不换行 */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 16,
-          minWidth: 0,
-          flex: "0 1 auto",
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
         <Link
           to="/"
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 8,
+            gap: 10,
             color: "var(--admiral-text-primary)",
-            fontWeight: 600,
+            fontWeight: 700,
             textDecoration: "none",
+            minWidth: 0,
           }}
         >
-          <LogoIcon />
-          <span style={{ whiteSpace: "nowrap" }}>Admiral</span>
-        </Link>
-        {user && (
-          <span style={{ flexShrink: 0 }}>
-            <StatusDot status={connectionStatus} />
+          <span
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 8,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#ffffff",
+              background: "linear-gradient(135deg, #0f6cbd 0%, #00a3a3 100%)",
+              boxShadow: "0 8px 20px rgba(15, 108, 189, 0.25)",
+            }}
+          >
+            <LogoIcon />
           </span>
-        )}
+          <span style={{ letterSpacing: 0.2 }}>Admiral</span>
+        </Link>
+        {user && <StatusBadge status={connectionStatus} />}
       </div>
 
-      {/* 右：账户下拉 + 设置 */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 8,
-          flexShrink: 0,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
         {user && (
           <>
             <div style={{ position: "relative" }} ref={ref}>
@@ -169,13 +161,19 @@ export function Header() {
                 type="button"
                 onClick={() => setAccountOpen((o) => !o)}
                 className="btn btn-default"
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 8, paddingRight: 8 }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  paddingLeft: 10,
+                  paddingRight: 10,
+                  maxWidth: 220,
+                }}
                 aria-expanded={accountOpen}
                 aria-haspopup="true"
               >
                 <span
                   style={{
-                    maxWidth: 140,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
@@ -183,8 +181,11 @@ export function Header() {
                 >
                   {user.email}
                 </span>
-                <span style={{ color: "var(--admiral-text-placeholder)" }} aria-hidden>▾</span>
+                <span style={{ color: "var(--admiral-text-placeholder)" }} aria-hidden>
+                  ▾
+                </span>
               </button>
+
               {accountOpen && (
                 <div
                   role="menu"
@@ -193,29 +194,29 @@ export function Header() {
                     position: "absolute",
                     right: 0,
                     top: "100%",
-                    marginTop: 4,
+                    marginTop: 6,
                     padding: "4px 0",
-                    width: 192,
+                    width: 220,
                     borderRadius: "var(--admiral-radius-card)",
                     backgroundColor: "var(--admiral-card)",
                     border: "1px solid var(--admiral-border)",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                    boxShadow: "var(--admiral-shadow-raised)",
                     zIndex: 10,
                     animation: "header-dropdown-in 0.15s ease-out",
                   }}
                 >
-                <div
-                  className="header-dropdown-item"
-                  style={{
-                    padding: "8px 12px",
-                    borderBottom: "1px solid var(--admiral-border)",
-                    fontSize: 14,
-                    color: "var(--admiral-text-secondary)",
-                    transition: "background-color 0.15s ease",
-                  }}
-                >
-                  {user.name || user.email}
-                </div>
+                  <div
+                    className="header-dropdown-item"
+                    style={{
+                      padding: "9px 12px",
+                      borderBottom: "1px solid var(--admiral-border)",
+                      fontSize: 13,
+                      color: "var(--admiral-text-secondary)",
+                    }}
+                  >
+                    {user.name || user.email}
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -226,13 +227,12 @@ export function Header() {
                     style={{
                       width: "100%",
                       textAlign: "left",
-                      padding: "8px 12px",
+                      padding: "9px 12px",
                       fontSize: 14,
                       color: "var(--color-danger)",
                       border: "none",
                       background: "none",
                       cursor: "pointer",
-                      transition: "background-color 0.15s ease",
                     }}
                   >
                     退出登录
@@ -240,15 +240,19 @@ export function Header() {
                 </div>
               )}
             </div>
+
             <Link
               to="/settings"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: 32,
-                height: 32,
-                color: "var(--admiral-text-placeholder)",
+                width: 34,
+                height: 34,
+                color: "var(--admiral-text-secondary)",
+                borderRadius: 10,
+                border: "1px solid var(--admiral-border)",
+                background: "#ffffff",
               }}
               title="设置"
               aria-label="设置"

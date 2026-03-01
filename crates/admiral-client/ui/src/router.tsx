@@ -31,24 +31,25 @@ const router = createBrowserRouter([
 ]);
 
 const SETTING_CARDS = [
-  { to: "/settings/platforms", icon: "📺", title: "平台授权", desc: "授权管理" },
-  { to: "/settings/preferences", icon: "🎨", title: "偏好", desc: "主题语言" },
-  { to: "/settings/mapi", icon: "🔌", title: "MAPI", desc: "调试工具" },
-  { to: "/settings/llm", icon: "🤖", title: "LLM", desc: "调试工具" },
-  { to: "/admin", icon: "⚙", title: "管理", desc: "仅管理员" },
+  { to: "/settings/platforms", title: "平台授权", desc: "管理 B 站授权与账户绑定", tag: "OAuth" },
+  { to: "/settings/preferences", title: "偏好", desc: "主题、语言与体验配置", tag: "Profile" },
+  { to: "/settings/mapi", title: "MAPI", desc: "代理接口调试工具", tag: "Debug" },
+  { to: "/settings/llm", title: "LLM", desc: "模型对话联调工具", tag: "Debug" },
+  { to: "/admin", title: "管理", desc: "管理员功能入口", tag: "Admin" },
 ];
 
 function SettingsPage() {
   return (
-    <div style={{ padding: 24, maxWidth: 720 }}>
-      <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--admiral-text-primary)", marginBottom: 24 }}>
-        ⚙ 设置
-      </h2>
+    <div className="admiral-grid-page">
+      <div className="settings-panel" style={{ maxWidth: 980 }}>
+      <h2 className="settings-title">设置中心</h2>
+      <p className="settings-subtitle">统一管理授权、偏好与联调工具。</p>
       <div
         style={{
+          marginTop: 14,
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-          gap: 16,
+          gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+          gap: 12,
         }}
       >
         {SETTING_CARDS.map((c) => (
@@ -60,18 +61,20 @@ function SettingsPage() {
               display: "flex",
               flexDirection: "column",
               padding: 16,
-              borderRadius: "var(--admiral-radius-card)",
+              gap: 8,
+              borderRadius: 12,
               border: "1px solid var(--admiral-border)",
-              backgroundColor: "var(--admiral-card)",
+              background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
               textDecoration: "none",
               color: "var(--admiral-text-primary)",
             }}
           >
-            <span style={{ fontSize: 24, marginBottom: 8 }}>{c.icon}</span>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>{c.title}</span>
-            <span style={{ fontSize: 12, color: "var(--admiral-text-secondary)", marginTop: 4 }}>{c.desc}</span>
+            <span className="admiral-chip admiral-chip-primary" style={{ width: "fit-content" }}>{c.tag}</span>
+            <span style={{ fontSize: 15, fontWeight: 700 }}>{c.title}</span>
+            <span style={{ fontSize: 13, color: "var(--admiral-text-secondary)" }}>{c.desc}</span>
           </Link>
         ))}
+      </div>
       </div>
     </div>
   );

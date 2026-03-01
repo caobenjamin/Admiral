@@ -15,8 +15,10 @@
       {
         "label": "main",
         "title": "Admiral",
-        "width": 1000,
-        "height": 700,
+        "width": 1440,
+        "height": 860,
+        "minWidth": 1240,
+        "minHeight": 720,
         "visible": true,
         "center": true
       }

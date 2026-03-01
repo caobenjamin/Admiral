@@ -14,50 +14,36 @@ export function StatusBar() {
   const connectionStatus = useUiStore((s) => s.connectionStatus);
 
   const days = license?.expires_at ? licenseRemainingDays(license.expires_at) : null;
-  const statusLabel = connectionStatus === "online" ? "在线" : connectionStatus === "connecting" ? "连接中" : "离线";
-  const dotColor =
+  const statusLabel =
+    connectionStatus === "online" ? "在线" : connectionStatus === "connecting" ? "连接中" : "离线";
+  const statusClass =
     connectionStatus === "online"
-      ? "var(--color-success)"
+      ? "admiral-chip admiral-chip-success"
       : connectionStatus === "connecting"
-        ? "var(--color-warning)"
-        : "#9CA3AF";
+        ? "admiral-chip admiral-chip-warning"
+        : "admiral-chip";
 
   return (
     <footer
       style={{
-        height: 28,
+        height: 32,
         flexShrink: 0,
         display: "flex",
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        paddingLeft: 16,
-        paddingRight: 16,
+        padding: "0 16px",
         borderTop: "1px solid var(--admiral-border)",
-        backgroundColor: "var(--admiral-card)",
+        background: "linear-gradient(180deg, #f8fbff 0%, #f2f7fb 100%)",
         color: "var(--admiral-text-secondary)",
         fontSize: 12,
       }}
     >
-      <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 16 }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              flexShrink: 0,
-              backgroundColor: dotColor,
-            }}
-            aria-hidden
-          />
-          {statusLabel}
-        </span>
-        {license?.is_active && days !== null && (
-          <span>License: 剩余{days}天</span>
-        )}
+      <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <span className={statusClass}>{statusLabel}</span>
+        {license?.is_active && days !== null && <span className="admiral-chip">License: 剩余{days}天</span>}
       </div>
-      <span>Admiral v1.0.0</span>
+      <span style={{ color: "var(--admiral-text-placeholder)" }}>Admiral v1.0.0</span>
     </footer>
   );
 }

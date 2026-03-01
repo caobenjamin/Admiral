@@ -25,10 +25,29 @@ function statusLabel(s: TaskStatus): string {
   return map[s] ?? s;
 }
 
+function statusClass(s: TaskStatus): string {
+  if (s === "running" || s === "dry_running" || s === "test_running") return "admiral-chip admiral-chip-warning";
+  if (s === "succeeded" || s === "dry_run_passed" || s === "test_run_passed") return "admiral-chip admiral-chip-success";
+  if (s === "failed") return "admiral-chip admiral-chip-danger";
+  if (s === "scheduled" || s === "deployed") return "admiral-chip admiral-chip-primary";
+  return "admiral-chip";
+}
+
 function typeLabel(t: "instant" | "scheduled" | "heartbeat"): string {
   if (t === "instant") return "即时任务";
   if (t === "heartbeat") return "心跳任务";
   return "定时任务";
+}
+
+function formatDate(v: string): string {
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export function TaskDetail() {
@@ -41,19 +60,14 @@ export function TaskDetail() {
   if (!task) {
     return (
       <div
-        className="rounded-lg border p-8 flex flex-col items-center justify-center text-center min-h-[200px]"
-        style={{
-          borderColor: "var(--admiral-border)",
-          backgroundColor: "var(--admiral-card)",
-          borderRadius: "var(--admiral-radius-card)",
-          boxShadow: "var(--admiral-shadow-card)",
-        }}
+        className="admiral-surface"
+        style={{ padding: 28, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", minHeight: 220 }}
       >
-        <span className="text-2xl mb-4" aria-hidden>📋</span>
-        <p className="text-sm text-[var(--admiral-text-secondary)] mb-4">
-          在左侧选择任务，或创建新任务
-        </p>
-        <Button variant="primary" onClick={() => navigate("/task/new")} className="inline-flex items-center gap-2">
+        <span style={{ fontSize: 30, marginBottom: 10 }} aria-hidden>
+          📋
+        </span>
+        <p style={{ margin: 0, fontSize: 14, color: "var(--admiral-text-secondary)" }}>在左侧选择任务，或创建新任务</p>
+        <Button variant="primary" onClick={() => navigate("/task/new")} className="inline-flex items-center gap-2" style={{ marginTop: 14 }}>
           <span aria-hidden>+</span>
           <span>新建任务</span>
         </Button>
@@ -70,8 +84,8 @@ export function TaskDetail() {
         : ["running", "dry_running", "test_running"].includes(task.status)
           ? 60
           : 0;
-  const showConfirmActions =
-    task.status === "dry_run_passed" || task.status === "test_run_passed";
+
+  const showConfirmActions = task.status === "dry_run_passed" || task.status === "test_run_passed";
 
   const handleConfirm = async () => {
     try {
@@ -82,68 +96,70 @@ export function TaskDetail() {
       await refresh();
     }
   };
+
   const handleCancel = async () => {
     await refresh();
   };
 
   return (
-    <div
-      className="rounded-lg border p-4"
-      style={{
-        borderColor: "var(--admiral-border)",
-        backgroundColor: "var(--admiral-card)",
-        borderRadius: "var(--admiral-radius-card)",
-        boxShadow: "var(--admiral-shadow-card)",
-      }}
-    >
-      <div style={{ marginBottom: 16 }}>
-        <h2 className="text-base font-semibold text-[var(--admiral-text-primary)]" style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>
-          {task.name || "未命名任务"}
-        </h2>
-        <p className="text-sm text-[var(--admiral-text-secondary)] mt-0.5">
-          {typeLabel(task.type)} · {statusLabel(task.status)}
-        </p>
-      </div>
-      {showProgress && progressPercent > 0 && (
-        <div style={{ marginBottom: 16 }}>
-          <div className="flex justify-between items-center gap-2 mb-1">
-            <span className="text-xs text-[var(--admiral-text-secondary)]">进度</span>
-            <span className="text-xs text-[var(--admiral-text-placeholder)]">{progressPercent}%</span>
+    <div className="admiral-surface" style={{ padding: 14 }}>
+      <div
+        style={{
+          border: "1px solid var(--admiral-border)",
+          borderRadius: 12,
+          background: "linear-gradient(180deg, #fbfeff 0%, #f4f9ff 100%)",
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+          <div style={{ minWidth: 0 }}>
+            <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: "var(--admiral-text-primary)" }}>{task.name || "未命名任务"}</h2>
+            <p style={{ fontSize: 12, margin: "4px 0 0", color: "var(--admiral-text-secondary)" }}>
+              {typeLabel(task.type)} · 更新于 {formatDate(task.updated_at)}
+            </p>
           </div>
-          <div
-            className="overflow-hidden rounded"
-            style={{ height: 8, borderRadius: 4, backgroundColor: "var(--admiral-border)" }}
-            role="progressbar"
-            aria-valuenow={progressPercent}
-            aria-valuemin={0}
-            aria-valuemax={100}
-          >
-            <div
-              className={`h-full rounded transition-all duration-300 ${task.status === "running" ? "task-progress-animated" : ""}`}
-              style={{
-                width: `${progressPercent}%`,
-                borderRadius: 4,
-                backgroundColor:
-                  task.status === "failed"
-                    ? "var(--color-danger)"
-                    : task.status === "succeeded"
-                      ? "var(--color-success)"
-                      : "var(--color-primary)",
-              }}
-            />
-          </div>
+          <span className={statusClass(task.status)}>{statusLabel(task.status)}</span>
         </div>
-      )}
-      {/* 执行时间线区块 */}
-      <div style={{ marginBottom: 16 }}>
-        <h3
-          className="text-[var(--admiral-text-primary)] mb-2"
-          style={{ fontSize: 14, fontWeight: 600, margin: "0 0 8px 0" }}
-        >
-          执行时间线
-        </h3>
+
+        {showProgress && progressPercent > 0 && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <span style={{ fontSize: 12, color: "var(--admiral-text-secondary)" }}>执行进度</span>
+              <span style={{ fontSize: 12, color: "var(--admiral-text-placeholder)" }}>{progressPercent}%</span>
+            </div>
+            <div
+              style={{ height: 8, borderRadius: 6, backgroundColor: "var(--admiral-border)", overflow: "hidden" }}
+              role="progressbar"
+              aria-valuenow={progressPercent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div
+                className={task.status === "running" ? "task-progress-animated" : ""}
+                style={{
+                  width: `${progressPercent}%`,
+                  height: "100%",
+                  borderRadius: 6,
+                  transition: "width 0.24s ease",
+                  backgroundColor:
+                    task.status === "failed"
+                      ? "var(--color-danger)"
+                      : task.status === "succeeded"
+                        ? "var(--color-success)"
+                        : "var(--color-primary)",
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--admiral-text-primary)", margin: "0 0 8px" }}>执行时间线</h3>
         <TaskTimeline hideTitle />
       </div>
+
       {showConfirmActions && (
         <ConfirmActions
           stage={task.status === "dry_run_passed" ? "dry_run_passed" : "test_run_passed"}

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTaskStore, type TaskMeta, type TaskStatus } from "@/stores/taskStore";
 import { useUiStore } from "@/stores/uiStore";
@@ -23,18 +23,37 @@ function taskStatusLabel(s: TaskStatus): string {
   return map[s] ?? s;
 }
 
-function taskStatusDot(s: TaskStatus): string {
-  if (s === "running" || s === "test_running" || s === "dry_running") return "bg-warning";
-  if (s === "succeeded") return "bg-success";
-  if (s === "failed") return "bg-danger";
-  if (s === "scheduled") return "bg-primary";
-  return "bg-gray-400";
+function statusClass(s: TaskStatus): string {
+  if (s === "running" || s === "test_running" || s === "dry_running") return "admiral-chip admiral-chip-warning";
+  if (s === "succeeded" || s === "dry_run_passed" || s === "test_run_passed") return "admiral-chip admiral-chip-success";
+  if (s === "failed") return "admiral-chip admiral-chip-danger";
+  if (s === "scheduled" || s === "deployed") return "admiral-chip admiral-chip-primary";
+  return "admiral-chip";
+}
+
+function statusDotColor(s: TaskStatus): string {
+  if (s === "running" || s === "test_running" || s === "dry_running") return "var(--color-warning)";
+  if (s === "succeeded") return "var(--color-success)";
+  if (s === "failed") return "var(--color-danger)";
+  if (s === "scheduled" || s === "deployed") return "var(--color-primary)";
+  return "#9fb3c8";
 }
 
 function lastRunResultLabel(r: "success" | "failed" | null | undefined): string {
   if (r === "success") return "成功";
   if (r === "failed") return "失败";
   return "暂无";
+}
+
+function formatDate(v: string): string {
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function TaskListItem({
@@ -52,67 +71,73 @@ function TaskListItem({
       onClick={onSelect}
       role="option"
       aria-selected={selected}
-      className={`block w-full rounded-lg flex flex-col gap-1.5 transition-colors duration-150 shrink-0 ${
-        selected
-          ? "bg-[var(--admiral-task-selected-bg)]"
-          : "border border-[var(--admiral-border)] bg-[var(--admiral-card)] hover:bg-[rgba(0,0,0,0.04)] hover:border-[var(--admiral-text-secondary)]"
-      }`}
+      className="admiral-page-enter"
       style={{
-        borderRadius: "var(--admiral-radius-card)",
-        padding: "10px 12px",
+        width: "100%",
+        borderRadius: 12,
+        border: selected ? "1px solid rgba(15, 108, 189, 0.5)" : "1px solid var(--admiral-border)",
+        background: selected ? "linear-gradient(180deg, #f1f8ff 0%, #eaf4ff 100%)" : "#ffffff",
+        padding: "11px 12px",
         textAlign: "left",
-        alignItems: "flex-start",
-        ...(selected ? { borderLeft: "3px solid var(--color-primary)" } : {}),
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        boxShadow: selected ? "0 10px 22px rgba(15, 108, 189, 0.12)" : "var(--admiral-shadow-soft)",
+        transition: "border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease",
       }}
     >
-      <div
-        className="flex items-center gap-2 w-full min-w-0"
-        style={{ justifyContent: "flex-start", alignSelf: "stretch" }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
         <span
-          className={`h-2 w-2 shrink-0 rounded-full ${taskStatusDot(task.status)}`}
-          style={{ borderRadius: "50%" }}
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            flexShrink: 0,
+            backgroundColor: statusDotColor(task.status),
+          }}
           aria-hidden
         />
         <span
-          className="min-w-0 truncate"
           title={task.name}
           style={{
             flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
             fontSize: 14,
-            fontWeight: selected ? 600 : 500,
-            color: selected ? "var(--color-primary)" : "var(--admiral-text-primary)",
-            textAlign: "left",
+            fontWeight: selected ? 700 : 600,
+            color: "var(--admiral-text-primary)",
           }}
         >
           {task.name || "未命名任务"}
         </span>
+        <span className={statusClass(task.status)}>{taskStatusLabel(task.status)}</span>
       </div>
+
       <div
-        className="flex items-center gap-1 pl-4 text-xs w-full"
         style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 8,
+          fontSize: 12,
           color: "var(--admiral-text-secondary)",
-          textAlign: "left",
-          justifyContent: "flex-start",
         }}
       >
-        <span>{taskStatusLabel(task.status)}</span>
-        {task.last_run_result && (
-          <>
-            <span>·</span>
-            <span
-              className={
-                task.last_run_result === "success"
-                  ? "text-[var(--color-success)]"
-                  : task.last_run_result === "failed"
-                    ? "text-[var(--color-danger)]"
-                    : ""
-              }
-            >
-              {lastRunResultLabel(task.last_run_result)}
-            </span>
-          </>
-        )}
+        <span>更新于 {formatDate(task.updated_at)}</span>
+        <span
+          style={{
+            color:
+              task.last_run_result === "success"
+                ? "var(--color-success)"
+                : task.last_run_result === "failed"
+                  ? "var(--color-danger)"
+                  : "var(--admiral-text-placeholder)",
+          }}
+        >
+          {lastRunResultLabel(task.last_run_result)}
+        </span>
       </div>
     </button>
   );
@@ -122,58 +147,95 @@ export function TaskList() {
   const navigate = useNavigate();
   const { tasks, fetchTasks } = useTaskStore();
   const { selectedTaskId, setSelectedTaskId } = useUiStore();
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | TaskStatus>("all");
 
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
 
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      const hitStatus = statusFilter === "all" || t.status === statusFilter;
+      const hitQuery = !query.trim() || t.name.toLowerCase().includes(query.trim().toLowerCase());
+      return hitStatus && hitQuery;
+    });
+  }, [tasks, query, statusFilter]);
+
   return (
     <div
       className="h-full min-h-0"
-      style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}
+      style={{ display: "flex", flexDirection: "column", overflow: "hidden", background: "transparent" }}
       role="listbox"
       aria-label="任务列表"
     >
-      {/* 标题区 + 操作区 */}
       <div
-        className="flex items-center justify-between shrink-0 border-b px-4 py-3"
-        style={{
-          borderColor: "var(--admiral-border)",
-          backgroundColor: "var(--admiral-bg)",
-        }}
-      >
-        <h3
-          className="text-[var(--admiral-text-primary)]"
-          style={{ fontSize: 14, fontWeight: 600, margin: 0 }}
-        >
-          任务列表
-        </h3>
-        <Button
-          variant="primary"
-          size="small"
-          onClick={() => navigate("/task/new")}
-          className="inline-flex items-center gap-1"
-        >
-          <span aria-hidden>+</span>
-          <span>新建任务</span>
-        </Button>
-      </div>
-      <div
-        className="flex-1 overflow-y-auto p-2 min-h-0"
         style={{
           display: "flex",
-          flexDirection: "column",
-          gap: 8,
+          alignItems: "center",
+          justifyContent: "space-between",
+          borderBottom: "1px solid var(--admiral-border)",
+          padding: "12px 14px",
+          gap: 12,
         }}
       >
-        {tasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-            <span className="text-2xl mb-2" aria-hidden>📋</span>
-            <p className="text-sm text-[var(--admiral-text-secondary)] mb-1">暂无任务</p>
-            <p className="text-xs text-[var(--admiral-text-placeholder)]">点击上方按钮创建第一个任务</p>
+        <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "var(--admiral-text-primary)" }}>任务列表</h3>
+        <Button variant="primary" size="small" onClick={() => navigate("/task/new")}>
+          + 新建任务
+        </Button>
+      </div>
+
+      <div style={{ padding: 12, borderBottom: "1px solid var(--admiral-border)", display: "flex", gap: 8 }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="搜索任务"
+          className="admiral-field"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            height: 32,
+            padding: "0 10px",
+            outline: "none",
+          }}
+        />
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as "all" | TaskStatus)}
+          className="admiral-field"
+          style={{ height: 32, padding: "0 8px", minWidth: 100, outline: "none" }}
+          aria-label="按状态筛选"
+        >
+          <option value="all">全部状态</option>
+          <option value="running">运行中</option>
+          <option value="succeeded">已完成</option>
+          <option value="failed">失败</option>
+          <option value="draft">草稿</option>
+        </select>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+        {filteredTasks.length === 0 ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "40px 16px",
+              textAlign: "center",
+            }}
+          >
+            <span style={{ fontSize: 28, marginBottom: 8 }} aria-hidden>
+              📋
+            </span>
+            <p style={{ margin: 0, fontSize: 14, color: "var(--admiral-text-secondary)" }}>暂无符合条件的任务</p>
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--admiral-text-placeholder)" }}>
+              调整筛选条件或创建新任务
+            </p>
           </div>
         ) : (
-          tasks.map((t) => (
+          filteredTasks.map((t) => (
             <TaskListItem
               key={t.id}
               task={t}

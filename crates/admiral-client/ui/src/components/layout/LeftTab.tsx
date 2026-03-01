@@ -3,8 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { useUiStore } from "@/stores/uiStore";
 import * as tauri from "@/lib/tauri";
 
-const TAB_WIDTH_EXPANDED = 220;
-const TAB_WIDTH_COLLAPSED = 56;
+const TAB_WIDTH_EXPANDED = 228;
+const TAB_WIDTH_COLLAPSED = 62;
 const ICON_SIZE = 20;
 const CHEVRON_SIZE = 16;
 
@@ -54,7 +54,10 @@ export function LeftTab() {
   const [biliAuthorized, setBiliAuthorized] = useState(false);
 
   useEffect(() => {
-    tauri.oauthStatus().then((list) => setBiliAuthorized(list.length > 0)).catch(() => setBiliAuthorized(false));
+    tauri
+      .oauthStatus()
+      .then((list) => setBiliAuthorized(list.length > 0))
+      .catch(() => setBiliAuthorized(false));
   }, []);
 
   const width = leftTabCollapsed ? TAB_WIDTH_COLLAPSED : TAB_WIDTH_EXPANDED;
@@ -68,19 +71,19 @@ export function LeftTab() {
     display: "flex",
     alignItems: "center",
     gap: 12,
-    padding: "10px 12px",
+    padding: leftTabCollapsed ? "11px" : "11px 12px",
     margin: "0 8px",
     textAlign: "left",
     fontSize: 14,
-    border: "none",
-    borderRadius: "var(--admiral-radius-button)",
+    border: "1px solid transparent",
+    borderRadius: 12,
     cursor: disabled ? "not-allowed" : "pointer",
-    backgroundColor: active ? "rgba(64, 158, 255, 0.1)" : "transparent",
+    backgroundColor: active ? "#ecf4ff" : "transparent",
     color: active ? "var(--color-primary)" : "var(--admiral-text-primary)",
     textDecoration: "none",
     position: "relative",
-    ...(active ? { borderLeft: "3px solid var(--color-primary)", paddingLeft: 9 } : {}),
-    ...(disabled ? { opacity: 0.6 } : {}),
+    ...(active ? { borderLeft: "3px solid var(--color-primary)", paddingLeft: leftTabCollapsed ? 11 : 9 } : {}),
+    ...(disabled ? { opacity: 0.5 } : {}),
   });
 
   return (
@@ -93,19 +96,32 @@ export function LeftTab() {
         display: "flex",
         flexDirection: "column",
         borderRight: "1px solid var(--admiral-border)",
-        backgroundColor: "var(--admiral-card)",
+        background: "linear-gradient(180deg, #f9fcff 0%, #f2f7fb 100%)",
         transition: "width 0.2s ease",
       }}
     >
-      <nav
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          flex: 1,
-          paddingTop: 8,
-          paddingBottom: 8,
-        }}
-      >
+      <nav style={{ display: "flex", flexDirection: "column", flex: 1, paddingTop: 10, paddingBottom: 8 }}>
+        {!leftTabCollapsed && (
+          <div
+            style={{
+              margin: "0 10px 10px",
+              padding: "10px",
+              borderRadius: 12,
+              border: "1px solid var(--admiral-border)",
+              background: "#ffffff",
+              boxShadow: "var(--admiral-shadow-soft)",
+            }}
+          >
+            <div style={{ fontSize: 12, color: "var(--admiral-text-placeholder)", marginBottom: 4 }}>媒体健康</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <span style={{ fontSize: 13, color: "var(--admiral-text-primary)", fontWeight: 600 }}>B站授权</span>
+              <span className={biliAuthorized ? "admiral-chip admiral-chip-success" : "admiral-chip admiral-chip-warning"}>
+                {biliAuthorized ? "已授权" : "待授权"}
+              </span>
+            </div>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={handleMediaClick}
@@ -116,7 +132,9 @@ export function LeftTab() {
           <MediaIcon />
           {!leftTabCollapsed && (
             <div style={{ minWidth: 0, flex: 1 }}>
-              <span style={{ display: "block", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>媒体账户</span>
+              <span style={{ display: "block", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                媒体账户
+              </span>
               <span
                 style={{
                   display: "block",
@@ -127,7 +145,7 @@ export function LeftTab() {
                   color: biliAuthorized ? "var(--color-success)" : "var(--color-warning)",
                 }}
               >
-                B站 {biliAuthorized ? "已授权 ✓" : "未授权"}
+                B站 {biliAuthorized ? "已授权" : "待授权"}
               </span>
             </div>
           )}
@@ -136,24 +154,24 @@ export function LeftTab() {
         <Link
           to="/"
           onClick={() => setActiveTab("tasks")}
-          style={{ ...baseBtnStyle(activeTab === "tasks"), marginTop: 4 }}
+          style={{ ...baseBtnStyle(activeTab === "tasks"), marginTop: 5 }}
           title={leftTabCollapsed ? "任务" : undefined}
           className={`left-tab-item ${activeTab === "tasks" ? "left-tab-active" : ""}`}
         >
           <TasksIcon />
-          {!leftTabCollapsed && <span style={{ fontWeight: 500 }}>任务</span>}
+          {!leftTabCollapsed && <span style={{ fontWeight: 600 }}>任务</span>}
         </Link>
 
         <button
           type="button"
           onClick={() => setActiveTab("skills")}
           disabled
-          style={{ ...baseBtnStyle(false, true), marginTop: 4, color: "var(--admiral-text-placeholder)" }}
+          style={{ ...baseBtnStyle(false, true), marginTop: 5, color: "var(--admiral-text-placeholder)" }}
           title={leftTabCollapsed ? "能力栏（Phase 5）" : undefined}
           className="left-tab-item"
         >
           <SkillsIcon />
-          {!leftTabCollapsed && <span style={{ fontWeight: 500 }}>能力栏</span>}
+          {!leftTabCollapsed && <span style={{ fontWeight: 600 }}>能力栏</span>}
         </button>
       </nav>
 
@@ -164,15 +182,16 @@ export function LeftTab() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          margin: "0 8px 8px",
+          margin: "0 8px 10px",
           padding: 8,
-          border: "none",
-          borderRadius: "var(--admiral-radius-button)",
-          backgroundColor: "transparent",
+          border: "1px solid var(--admiral-border)",
+          borderRadius: 10,
+          backgroundColor: "#ffffff",
           color: "var(--admiral-text-secondary)",
           cursor: "pointer",
         }}
         title={leftTabCollapsed ? "展开" : "收起"}
+        aria-label={leftTabCollapsed ? "展开导航" : "收起导航"}
       >
         {leftTabCollapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
       </button>

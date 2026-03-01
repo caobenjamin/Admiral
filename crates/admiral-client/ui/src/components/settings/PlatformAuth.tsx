@@ -10,7 +10,19 @@ import type {
   BiliAdvertiserRecord,
 } from "@/lib/types";
 
-/** 确认解绑弹窗 */
+const cardStyle: React.CSSProperties = {
+  backgroundColor: "var(--admiral-card)",
+  border: "1px solid var(--admiral-border)",
+  borderRadius: "var(--admiral-radius-card)",
+  boxShadow: "var(--admiral-shadow-card)",
+};
+
+function ErrorNotice({ message }: { message: string }) {
+  if (!message) return null;
+
+  return <div className="oauth-error-notice">{message}</div>;
+}
+
 function ConfirmUnbindDialog({
   open,
   accountName,
@@ -37,52 +49,29 @@ function ConfirmUnbindDialog({
       role="dialog"
       aria-modal="true"
       aria-labelledby="unbind-dialog-title"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 100,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "rgba(0,0,0,0.3)",
-      }}
+      className="oauth-overlay"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="admiral-dialog-content"
+        className="admiral-dialog-content oauth-modal"
         style={{
-          backgroundColor: "var(--admiral-card)",
-          border: "1px solid var(--admiral-border)",
-          borderRadius: "var(--admiral-radius-card)",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
-          maxWidth: 480,
-          width: "min(90vw, 480px)",
+          width: "min(92vw, 460px)",
           overflow: "hidden",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div
-          style={{
-            padding: "20px 24px",
-            borderBottom: "1px solid var(--admiral-border)",
-            fontSize: 16,
-            fontWeight: 600,
-            color: "var(--admiral-text-primary)",
-          }}
-          id="unbind-dialog-title"
-        >
-          确认解绑
+        <div className="oauth-modal-header" id="unbind-dialog-title">
+          <span className="oauth-modal-title">确认解绑</span>
+          <span className="admiral-chip admiral-chip-danger">危险操作</span>
         </div>
-        <div style={{ padding: "20px 24px", color: "var(--admiral-text-primary)", fontSize: 14 }}>
-          确定要解绑该账户{accountName ? `「${accountName}」` : ""}吗？
+
+        <div style={{ padding: "14px 16px", color: "var(--admiral-text-primary)", fontSize: 14 }}>
+          确定要解绑该账户{accountName ? `「${accountName}」` : ""}吗？解绑后将无法继续执行该账户相关任务。
         </div>
+
         <div
-          style={{
-            padding: "12px 24px 20px",
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 12,
-          }}
+          className="oauth-modal-footer"
+          style={{ borderTop: "none", paddingTop: 10 }}
         >
           <button type="button" onClick={onClose} className="btn btn-default">
             取消
@@ -96,7 +85,6 @@ function ConfirmUnbindDialog({
   );
 }
 
-/** 新增账户弹窗：先选 subject（组织），再拉取该 subject 下账户列表并绑定 */
 function BindAccountModal({
   open,
   onClose,
@@ -211,91 +199,63 @@ function BindAccountModal({
     if (!accounts) return;
     setSelectedAccountIds(accounts.records.map((r) => r.account_id));
   };
+
   const clearSelection = () => setSelectedAccountIds([]);
 
   if (!open) return null;
-
-  const cardStyle: React.CSSProperties = {
-    backgroundColor: "var(--admiral-card)",
-    border: "1px solid var(--admiral-border)",
-    borderRadius: "var(--admiral-radius-card)",
-    boxShadow: "var(--admiral-shadow-card)",
-  };
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="bind-modal-title"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 100,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "rgba(0,0,0,0.3)",
-      }}
+      className="oauth-overlay"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="admiral-dialog-content"
+        className="admiral-dialog-content oauth-modal"
         style={{
-          ...cardStyle,
-          width: "min(90vw, 560px)",
-          maxHeight: "80vh",
+          width: "min(92vw, 620px)",
+          maxHeight: "82vh",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div
-          style={{
-            padding: "16px 20px",
-            borderBottom: "1px solid var(--admiral-border)",
-            fontSize: 16,
-            fontWeight: 600,
-            color: "var(--admiral-text-primary)",
-          }}
-          id="bind-modal-title"
-        >
-          新增账户
+        <div className="oauth-modal-header" id="bind-modal-title">
+          <span className="oauth-modal-title">新增账户</span>
+          <span className="admiral-chip admiral-chip-primary">Step 1 选择组织 · Step 2 绑定账户</span>
         </div>
-        <div style={{ padding: 20, overflow: "auto", flex: 1 }}>
+
+        <div className="oauth-modal-body">
           {!oauthSessionId ? (
-            <p style={{ color: "var(--admiral-text-secondary)", fontSize: 14 }}>
+            <p style={{ color: "var(--admiral-text-secondary)", fontSize: 14, margin: 0 }}>
               请先选择授权来源（BID / 用户名）。
             </p>
           ) : subjectsLoading ? (
-            <p style={{ color: "var(--admiral-text-secondary)", fontSize: 14 }}>
-              正在获取组织列表…
+            <p style={{ color: "var(--admiral-text-secondary)", fontSize: 14, margin: 0 }}>
+              正在获取组织列表...
             </p>
           ) : !selectedSubject ? (
             <>
-              <p
-                style={{
-                  fontSize: 13,
-                  color: "var(--admiral-text-secondary)",
-                  marginBottom: 12,
-                }}
-              >
+              <p style={{ fontSize: 13, color: "var(--admiral-text-secondary)", margin: 0 }}>
                 请先选择一个组织（subject），再拉取该组织下的广告主账户。
               </p>
               {subjects.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "grid", gap: 8 }}>
                   {subjects.map((s) => (
                     <button
                       key={`${s.subject_type}-${s.subject_id}`}
                       type="button"
                       onClick={() => setSelectedSubject(s)}
                       style={{
-                        padding: "12px 16px",
+                        padding: "10px 12px",
                         textAlign: "left",
-                        fontSize: 14,
+                        fontSize: 13,
                         border: "1px solid var(--admiral-border)",
                         borderRadius: "var(--admiral-radius-input)",
-                        backgroundColor: "var(--admiral-card)",
+                        backgroundColor: "#ffffff",
                         color: "var(--admiral-text-primary)",
                         cursor: "pointer",
                       }}
@@ -305,175 +265,107 @@ function BindAccountModal({
                   ))}
                 </div>
               ) : (
-                <p style={{ color: "var(--admiral-text-secondary)", fontSize: 14 }}>
+                <p style={{ color: "var(--admiral-text-secondary)", fontSize: 14, margin: 0 }}>
                   当前授权下无可用组织。
                 </p>
               )}
             </>
-          ) : error ? (
-            <div
-              style={{
-                padding: "10px 12px",
-                fontSize: 14,
-                color: "var(--color-danger)",
-                backgroundColor: "rgba(245,108,108,0.1)",
-                border: "1px solid var(--color-danger)",
-                borderRadius: "var(--admiral-radius-input)",
-              }}
-            >
-              {error}
-            </div>
-          ) : accountsLoading ? (
-            <p style={{ color: "var(--admiral-text-secondary)", fontSize: 14 }}>
-              正在获取可绑定账户列表…
-            </p>
-          ) : accounts && accounts.records.length > 0 ? (
+          ) : (
             <>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <p style={{ fontSize: 13, color: "var(--admiral-text-secondary)", margin: 0 }}>
-                  当前组织：type={selectedSubject.subject_type} id={selectedSubject.subject_id}
+              <ErrorNotice message={error} />
+
+              {!error && accountsLoading && (
+                <p style={{ color: "var(--admiral-text-secondary)", fontSize: 14, margin: 0 }}>
+                  正在获取可绑定账户列表...
                 </p>
-                <button
-                  type="button"
-                  onClick={() => { setSelectedSubject(null); setAccounts(null); setError(""); }}
-                  style={{
-                    fontSize: 13,
-                    color: "var(--admiral-text-secondary)",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  更换组织
-                </button>
-              </div>
-              <p
-                style={{
-                  fontSize: 13,
-                  color: "var(--admiral-text-secondary)",
-                  marginBottom: 12,
-                }}
-              >
-                共 {accounts.total} 个账户，勾选需要绑定的账户后点击保存。
-              </p>
-              <div style={{ marginBottom: 12, display: "flex", gap: 12 }}>
-                <button
-                  type="button"
-                  onClick={selectAll}
-                  style={{
-                    fontSize: 12,
-                    color: "var(--color-primary)",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 0,
-                  }}
-                >
-                  全选
-                </button>
-                <button
-                  type="button"
-                  onClick={clearSelection}
-                  style={{
-                    fontSize: 12,
-                    color: "var(--admiral-text-secondary)",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 0,
-                  }}
-                >
-                  清空
-                </button>
-              </div>
-              <div style={{ overflowX: "auto" }}>
-                <table
-                  style={{
-                    width: "100%",
-                    fontSize: 14,
-                    borderCollapse: "collapse",
-                  }}
-                >
-                  <thead>
-                    <tr
-                      style={{
-                        borderBottom: "1px solid var(--admiral-border)",
-                        color: "var(--admiral-text-secondary)",
-                        textAlign: "left",
+              )}
+
+              {!error && accounts && accounts.records.length > 0 && (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                    <p style={{ fontSize: 13, color: "var(--admiral-text-secondary)", margin: 0 }}>
+                      当前组织：type={selectedSubject.subject_type} id={selectedSubject.subject_id}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedSubject(null);
+                        setAccounts(null);
+                        setError("");
                       }}
+                      className="btn btn-default btn-small"
                     >
-                      <th style={{ padding: "10px 12px 10px 0", width: 44 }}>选择</th>
-                      <th style={{ padding: "10px 12px 10px 0" }}>账户 ID</th>
-                      <th style={{ padding: "10px 12px 10px 0" }}>账户名称</th>
-                      <th style={{ padding: "10px 0" }}>角色</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {accounts.records.map((r: BiliAdvertiserRecord) => (
-                      <tr
-                        key={r.account_id}
-                        style={{
-                          borderBottom: "1px solid var(--admiral-border)",
-                        }}
-                      >
-                        <td style={{ padding: "10px 12px 10px 0" }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedAccountIds.includes(r.account_id)}
-                            onChange={() => toggleAccount(r.account_id)}
-                            style={{ width: 16, height: 16 }}
-                          />
-                        </td>
-                        <td
-                          style={{
-                            padding: "10px 12px 10px 0",
-                            fontFamily: "monospace",
-                          }}
-                        >
-                          {r.account_id}
-                        </td>
-                        <td style={{ padding: "10px 12px 10px 0" }}>
-                          {r.account_name ?? "—"}
-                        </td>
-                        <td style={{ padding: "10px 0" }}>{r.account_role ?? "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                      更换组织
+                    </button>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                    <p style={{ fontSize: 13, color: "var(--admiral-text-secondary)", margin: 0 }}>
+                      共 {accounts.total} 个账户，勾选需要绑定的账户后点击保存。
+                    </p>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button type="button" onClick={selectAll} className="btn btn-default btn-small">全选</button>
+                      <button type="button" onClick={clearSelection} className="btn btn-default btn-small">清空</button>
+                    </div>
+                  </div>
+
+                  <div style={{ overflowX: "auto", border: "1px solid var(--admiral-border)", borderRadius: 12, background: "#fafdff" }}>
+                    <table className="oauth-table" style={{ fontSize: 13 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: 52 }}>选择</th>
+                          <th>账户 ID</th>
+                          <th>账户名称</th>
+                          <th>角色</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {accounts.records.map((r: BiliAdvertiserRecord) => (
+                          <tr key={r.account_id} style={{ borderBottom: "1px solid var(--admiral-border)" }}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={selectedAccountIds.includes(r.account_id)}
+                                onChange={() => toggleAccount(r.account_id)}
+                                style={{ width: 16, height: 16 }}
+                              />
+                            </td>
+                            <td style={{ fontFamily: "var(--admiral-font-mono)" }}>
+                              {r.account_id}
+                            </td>
+                            <td>{r.account_name ?? "-"}</td>
+                            <td>{r.account_role ?? "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+
+              {!error && accounts && accounts.records.length === 0 && (
+                <p style={{ color: "var(--admiral-text-secondary)", fontSize: 14, margin: 0 }}>
+                  当前授权下无可绑定账户。
+                </p>
+              )}
             </>
-          ) : accounts && accounts.records.length === 0 ? (
-            <p
-              style={{ color: "var(--admiral-text-secondary)", fontSize: 14 }}
-            >
-              当前授权下无可绑定账户。
-            </p>
-          ) : null}
+          )}
         </div>
-        <div
-          style={{
-            padding: "12px 20px",
-            borderTop: "1px solid var(--admiral-border)",
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 12,
-          }}
-        >
+
+        <div className="oauth-modal-footer">
           <button type="button" onClick={onClose} className="btn btn-default">
             取消
           </button>
-          {oauthSessionId &&
-            accounts &&
-            accounts.records.length > 0 && (
-              <button
-                type="button"
-                onClick={handleBind}
-                disabled={bindLoading || selectedAccountIds.length === 0}
-                className="btn btn-primary"
-              >
-                {bindLoading ? "保存中…" : `保存 (${selectedAccountIds.length})`}
-              </button>
-            )}
+          {oauthSessionId && accounts && accounts.records.length > 0 && (
+            <button
+              type="button"
+              onClick={handleBind}
+              disabled={bindLoading || selectedAccountIds.length === 0}
+              className="btn btn-primary"
+            >
+              {bindLoading ? "保存中..." : `保存 (${selectedAccountIds.length})`}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -515,7 +407,6 @@ export function PlatformAuth() {
     loadData();
   }, [loadData]);
 
-  // 授权成功后轮询 status，检测到新 token 后自动刷新
   const prevStatusLenRef = useRef(0);
   useEffect(() => {
     if (!initiatePolling) return;
@@ -533,10 +424,12 @@ export function PlatformAuth() {
       }
       prevStatusLenRef.current = statusList.length;
     }, 2000);
+
     const timeout = setTimeout(() => {
       setInitiatePolling(false);
       showToast("授权超时，请重试", "error");
     }, 5 * 60 * 1000);
+
     return () => {
       clearInterval(t);
       clearTimeout(timeout);
@@ -558,10 +451,7 @@ export function PlatformAuth() {
     let list = bindings;
     if (searchName.trim()) {
       const kw = searchName.trim().toLowerCase();
-      list = list.filter(
-        (b) =>
-          (b.account_name ?? "").toLowerCase().includes(kw)
-      );
+      list = list.filter((b) => (b.account_name ?? "").toLowerCase().includes(kw));
     }
     if (searchId.trim()) {
       const idStr = searchId.trim();
@@ -588,7 +478,6 @@ export function PlatformAuth() {
     setAddAccountOpen(true);
   };
 
-  // 点击外部关闭下拉
   useEffect(() => {
     if (!addAccountDropdownOpen) return;
     const onDocClick = () => setAddAccountDropdownOpen(false);
@@ -599,270 +488,153 @@ export function PlatformAuth() {
     };
   }, [addAccountDropdownOpen]);
 
-  const cardStyle: React.CSSProperties = {
-    backgroundColor: "var(--admiral-card)",
-    border: "1px solid var(--admiral-border)",
-    borderRadius: "var(--admiral-radius-card)",
-    boxShadow: "var(--admiral-shadow-card)",
-  };
-
   return (
-    <div
-      style={{
-        maxWidth: 720,
-        padding: 24,
-        display: "flex",
-        flexDirection: "column",
-        gap: 24,
-      }}
-    >
-      <h2
-        style={{
-          fontSize: 18,
-          fontWeight: 600,
-          color: "var(--admiral-text-primary)",
-          margin: 0,
-        }}
-      >
-        授权管理
-      </h2>
+    <div className="admiral-grid-page">
+      <div className="settings-panel" style={{ maxWidth: 980, display: "flex", flexDirection: "column", gap: 14 }}>
+        <h2 className="settings-title">授权管理</h2>
+        <p className="settings-subtitle">管理 B 站授权、组织下账户绑定与解绑。</p>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            padding: "6px 12px",
-            borderRadius: "var(--admiral-radius-button)",
-            border: "1px solid var(--admiral-border)",
-            fontSize: 14,
-            color: "var(--admiral-text-primary)",
-          }}
-        >
-          [▼ B站]
-        </div>
-        <div style={{ flex: 1, minWidth: 180, display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <input
-            type="text"
-            placeholder="账户名称搜索"
-            value={searchName}
-            onChange={(e) => setSearchName(e.target.value)}
-            style={{
-              flex: 1,
-              minWidth: 120,
-              padding: "8px 12px",
-              fontSize: 14,
-              borderRadius: "var(--admiral-radius-input)",
-              border: "1px solid var(--admiral-border)",
-              color: "var(--admiral-text-primary)",
-            }}
-          />
-          <input
-            type="text"
-            placeholder="账户ID精确匹配"
-            value={searchId}
-            onChange={(e) => setSearchId(e.target.value)}
-            style={{
-              width: 140,
-              padding: "8px 12px",
-              fontSize: 14,
-              borderRadius: "var(--admiral-radius-input)",
-              border: "1px solid var(--admiral-border)",
-              color: "var(--admiral-text-primary)",
-            }}
-          />
-        </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <div style={{ position: "relative" }}>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setAddAccountDropdownOpen(!addAccountDropdownOpen);
-              }}
-              disabled={status.length === 0}
-              className="btn btn-default"
-            >
-              新增账户 ▾
-            </button>
-            {addAccountDropdownOpen && status.length > 0 && (
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  position: "absolute",
-                  top: "100%",
-                  left: 0,
-                  marginTop: 4,
-                  minWidth: 180,
-                  backgroundColor: "var(--admiral-card)",
-                  border: "1px solid var(--admiral-border)",
-                  borderRadius: "var(--admiral-radius-button)",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                  zIndex: 10,
-                }}
-              >
-                {status.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => openBindModal(s.id)}
-                    style={{
-                      display: "block",
-                      width: "100%",
-                      padding: "10px 14px",
-                      textAlign: "left",
-                      fontSize: 14,
-                      border: "none",
-                      background: "none",
-                      color: "var(--admiral-text-primary)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {s.user_name || (s.bid != null ? `BID: ${s.bid}` : s.id.slice(0, 8))}
-                  </button>
-                ))}
-              </div>
-            )}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div className="admiral-chip admiral-chip-primary">B站</div>
+
+          <div style={{ flex: 1, minWidth: 180, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <input
+              type="text"
+              placeholder="账户名称搜索"
+              value={searchName}
+              onChange={(e) => setSearchName(e.target.value)}
+              className="admiral-field oauth-field"
+              style={{ flex: 1, minWidth: 150 }}
+            />
+            <input
+              type="text"
+              placeholder="账户ID精确匹配"
+              value={searchId}
+              onChange={(e) => setSearchId(e.target.value)}
+              className="admiral-field oauth-field"
+              style={{ width: 150 }}
+            />
           </div>
-          <button type="button" onClick={handleInitiate} className="btn btn-default">
-            新增授权
-          </button>
-        </div>
-      </div>
 
-      {error && (
-        <div
-          style={{
-            padding: "10px 14px",
-            fontSize: 14,
-            color: "var(--color-danger)",
-            backgroundColor: "rgba(245,108,108,0.1)",
-            border: "1px solid var(--color-danger)",
-            borderRadius: "var(--admiral-radius-input)",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      <div style={cardStyle}>
-        {loading ? (
-          <div
-            style={{
-              padding: 32,
-              textAlign: "center",
-              color: "var(--admiral-text-secondary)",
-              fontSize: 14,
-            }}
-          >
-            加载中…
-          </div>
-        ) : filteredBindings.length > 0 ? (
-          <>
-            <div
-              style={{
-                padding: "16px 20px",
-                borderBottom: "1px solid var(--admiral-border)",
-                fontSize: 15,
-                fontWeight: 600,
-                color: "var(--admiral-text-primary)",
-              }}
-            >
-              已绑定账户 ({filteredBindings.length})
-            </div>
-            <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  fontSize: 14,
-                  borderCollapse: "collapse",
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAddAccountDropdownOpen(!addAccountDropdownOpen);
                 }}
+                disabled={status.length === 0}
+                className="btn btn-default"
               >
-                <thead>
-                  <tr
-                    style={{
-                      borderBottom: "1px solid var(--admiral-border)",
-                      color: "var(--admiral-text-secondary)",
-                      textAlign: "left",
-                    }}
-                  >
-                    <th style={{ padding: "12px 16px", fontWeight: 500 }}>账户名称</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 500 }}>账户ID</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 500 }}>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredBindings.map((b) => (
-                    <tr
-                      key={`${b.platform}-${b.account_id}`}
-                      style={{
-                        borderBottom: "1px solid var(--admiral-border)",
-                      }}
+                新增账户 ▾
+              </button>
+
+              {addAccountDropdownOpen && status.length > 0 && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="oauth-dropdown"
+                >
+                  {status.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => openBindModal(s.id)}
+                      className="oauth-dropdown-item header-dropdown-item"
                     >
-                      <td style={{ padding: "12px 16px" }}>{b.account_name ?? "—"}</td>
-                      <td
-                        style={{
-                          padding: "12px 16px",
-                          fontFamily: "monospace",
-                        }}
-                      >
-                        {b.account_id}
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>
-                        <button
-                          type="button"
-                          onClick={() => setUnbindTarget(b)}
-                          style={{
-                            fontSize: 14,
-                            color: "var(--color-danger)",
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            padding: "4px 8px",
-                          }}
-                        >
-                          删除
-                        </button>
-                      </td>
-                    </tr>
+                      {s.user_name || (s.bid != null ? `BID: ${s.bid}` : s.id.slice(0, 8))}
+                    </button>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              )}
             </div>
-          </>
-        ) : (
-          <div
-            style={{
-              padding: 40,
-              textAlign: "center",
-              color: "var(--admiral-text-secondary)",
-              fontSize: 14,
-            }}
-          >
-            <p style={{ margin: 0, marginBottom: 8 }}>暂无已绑定账户</p>
-            <p style={{ margin: 0 }}>
-              请先发起 B 站授权，完成授权后点击「新增账户」选择要绑定的广告账户。
-            </p>
+
+            <button type="button" onClick={handleInitiate} className="btn btn-default">
+              {initiatePolling ? "授权中..." : "新增授权"}
+            </button>
           </div>
-        )}
+        </div>
+
+        <ErrorNotice message={error} />
+
+        <div style={cardStyle}>
+          {loading ? (
+            <div className="oauth-loading">加载中...</div>
+          ) : filteredBindings.length > 0 ? (
+            <>
+              <div
+                style={{
+                  padding: "14px 16px",
+                  borderBottom: "1px solid var(--admiral-border)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span style={{ fontSize: 15, fontWeight: 700, color: "var(--admiral-text-primary)" }}>
+                  已绑定账户 ({filteredBindings.length})
+                </span>
+                <span className="admiral-chip">仅展示当前筛选结果</span>
+              </div>
+
+              <div className="oauth-table-wrap">
+                <table className="oauth-table">
+                  <thead>
+                    <tr>
+                      <th>账户名称</th>
+                      <th>账户 ID</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredBindings.map((b) => (
+                      <tr key={`${b.platform}-${b.account_id}`}>
+                        <td>{b.account_name ?? "-"}</td>
+                        <td style={{ fontFamily: "var(--admiral-font-mono)" }}>
+                          {b.account_id}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() => setUnbindTarget(b)}
+                            className="btn btn-danger btn-small"
+                          >
+                            删除
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <div className="oauth-empty">
+              <p style={{ margin: 0, marginBottom: 6 }}>暂无已绑定账户</p>
+              <p style={{ margin: 0 }}>请先发起 B 站授权，再点击「新增账户」选择要绑定的广告账户。</p>
+            </div>
+          )}
+        </div>
+
+        <BindAccountModal
+          open={addAccountOpen}
+          onClose={() => {
+            setAddAccountOpen(false);
+            setSelectedTokenId(null);
+          }}
+          oauthSessionId={selectedTokenId}
+          onSuccess={loadData}
+        />
+
+        <ConfirmUnbindDialog
+          open={!!unbindTarget}
+          accountName={unbindTarget?.account_name ?? ""}
+          onClose={() => setUnbindTarget(null)}
+          onConfirm={handleUnbind}
+        />
       </div>
-
-      <BindAccountModal
-        open={addAccountOpen}
-        onClose={() => {
-          setAddAccountOpen(false);
-          setSelectedTokenId(null);
-        }}
-        oauthSessionId={selectedTokenId}
-        onSuccess={loadData}
-      />
-
-      <ConfirmUnbindDialog
-        open={!!unbindTarget}
-        accountName={unbindTarget?.account_name ?? ""}
-        onClose={() => setUnbindTarget(null)}
-        onConfirm={handleUnbind}
-      />
     </div>
   );
 }

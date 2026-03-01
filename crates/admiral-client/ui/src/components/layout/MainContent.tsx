@@ -11,17 +11,21 @@ function TwoColumnLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isDragging) return;
+
     const onMove = (e: MouseEvent) => {
       const dx = e.clientX - startX.current;
       setTaskListWidth(startWidth.current + dx);
     };
+
     const onUp = () => {
       setIsDragging(false);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
+
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
+
     return () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
@@ -42,6 +46,7 @@ function TwoColumnLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <main
+      className="admiral-page-enter"
       style={{
         flex: 1,
         minWidth: 0,
@@ -49,10 +54,12 @@ function TwoColumnLayout({ children }: { children: React.ReactNode }) {
         overflow: "hidden",
         display: "flex",
         flexDirection: "row",
-        backgroundColor: "var(--admiral-bg)",
+        padding: 14,
+        gap: 0,
       }}
     >
       <div
+        className="admiral-surface"
         style={{
           width: taskListWidth,
           minWidth: 240,
@@ -61,12 +68,11 @@ function TwoColumnLayout({ children }: { children: React.ReactNode }) {
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          borderRight: "1px solid var(--admiral-border)",
-          backgroundColor: "var(--admiral-card)",
         }}
       >
         <TaskList />
       </div>
+
       <div
         role="separator"
         aria-orientation="vertical"
@@ -74,11 +80,15 @@ function TwoColumnLayout({ children }: { children: React.ReactNode }) {
         className={`resize-handle ${isDragging ? "resize-dragging" : ""}`}
         style={{
           width: 8,
+          margin: "0 6px",
+          borderRadius: 8,
           flexShrink: 0,
           cursor: "col-resize",
         }}
       />
+
       <div
+        className="admiral-surface"
         style={{
           flex: 1,
           minWidth: 480,
@@ -132,10 +142,11 @@ export function MainContent() {
           overflow: "auto",
           display: "flex",
           flexDirection: "column",
-          backgroundColor: "var(--admiral-bg)",
+          padding: 16,
         }}
       >
         <div
+          className="admiral-surface"
           style={{
             flex: 1,
             display: "flex",
@@ -170,10 +181,12 @@ export function MainContent() {
         overflow: "auto",
         display: "flex",
         flexDirection: "column",
-        backgroundColor: "var(--admiral-bg)",
+        padding: 14,
       }}
     >
-      <Outlet />
+      <div className="admiral-surface" style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+        <Outlet />
+      </div>
     </main>
   );
 }

@@ -47,66 +47,93 @@ export function MapiDebugPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-medium">MAPI 调试</h2>
-      <div className="grid gap-2 max-w-xl">
-        <label className="flex gap-2 items-center">
-          <span className="w-24">account_id</span>
-          <input
-            type="text"
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            className="border rounded px-3 py-2 flex-1"
-          />
-        </label>
-        <label className="flex gap-2 items-center">
-          <span className="w-24">method</span>
-          <select
-            value={method}
-            onChange={(e) => setMethod(e.target.value)}
-            className="border rounded px-3 py-2"
+    <div className="admiral-grid-page">
+      <div className="settings-panel" style={{ maxWidth: 900 }}>
+        <h2 className="settings-title">MAPI 调试</h2>
+        <p className="settings-subtitle">用于联调代理请求。正式环境建议仅管理员可见。</p>
+
+        <div style={{ marginTop: 14, display: "grid", gap: 10, maxWidth: 760 }}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ width: 96, color: "var(--admiral-text-secondary)", fontSize: 13 }}>account_id</span>
+            <input
+              type="text"
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+              className="admiral-field"
+              style={{ padding: "8px 10px", flex: 1, outline: "none" }}
+            />
+          </label>
+
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ width: 96, color: "var(--admiral-text-secondary)", fontSize: 13 }}>method</span>
+            <select
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              className="admiral-field"
+              style={{ padding: "8px 10px", outline: "none" }}
+            >
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+            </select>
+          </label>
+
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ width: 96, color: "var(--admiral-text-secondary)", fontSize: 13 }}>path</span>
+            <input
+              type="text"
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              className="admiral-field"
+              style={{ padding: "8px 10px", flex: 1, outline: "none" }}
+            />
+          </label>
+
+          <label style={{ display: "flex", gap: 8 }}>
+            <span style={{ width: 96, flexShrink: 0, color: "var(--admiral-text-secondary)", fontSize: 13 }}>query (JSON)</span>
+            <textarea
+              value={queryJson}
+              onChange={(e) => setQueryJson(e.target.value)}
+              className="admiral-field"
+              style={{ padding: "8px 10px", flex: 1, fontFamily: "var(--admiral-font-mono)", fontSize: 13, outline: "none" }}
+              rows={2}
+            />
+          </label>
+
+          <label style={{ display: "flex", gap: 8 }}>
+            <span style={{ width: 96, flexShrink: 0, color: "var(--admiral-text-secondary)", fontSize: 13 }}>body (JSON)</span>
+            <textarea
+              value={bodyJson}
+              onChange={(e) => setBodyJson(e.target.value)}
+              className="admiral-field"
+              style={{ padding: "8px 10px", flex: 1, fontFamily: "var(--admiral-font-mono)", fontSize: 13, outline: "none" }}
+              rows={4}
+              placeholder="POST 时填写"
+            />
+          </label>
+
+          <button type="button" onClick={handleSend} disabled={loading} className="btn btn-primary" style={{ width: 120 }}>
+            {loading ? "请求中..." : "发送"}
+          </button>
+        </div>
+
+        {result && (
+          <pre
+            className="admiral-field"
+            style={{
+              marginTop: 14,
+              padding: 12,
+              background: "#f8fbff",
+              fontSize: 12,
+              overflow: "auto",
+              maxHeight: 420,
+              whiteSpace: "pre-wrap",
+              fontFamily: "var(--admiral-font-mono)",
+            }}
           >
-            <option value="GET">GET</option>
-            <option value="POST">POST</option>
-          </select>
-        </label>
-        <label className="flex gap-2 items-center">
-          <span className="w-24">path</span>
-          <input
-            type="text"
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-            className="border rounded px-3 py-2 flex-1"
-          />
-        </label>
-        <label className="flex gap-2">
-          <span className="w-24 shrink-0">query (JSON)</span>
-          <textarea
-            value={queryJson}
-            onChange={(e) => setQueryJson(e.target.value)}
-            className="border rounded px-3 py-2 flex-1 font-mono text-sm"
-            rows={2}
-          />
-        </label>
-        <label className="flex gap-2">
-          <span className="w-24 shrink-0">body (JSON)</span>
-          <textarea
-            value={bodyJson}
-            onChange={(e) => setBodyJson(e.target.value)}
-            className="border rounded px-3 py-2 flex-1 font-mono text-sm"
-            rows={4}
-            placeholder="POST 时填写"
-          />
-        </label>
-        <button type="button" onClick={handleSend} disabled={loading} className="btn btn-primary">
-          {loading ? "请求中..." : "发送"}
-        </button>
+            {result}
+          </pre>
+        )}
       </div>
-      {result && (
-        <pre className="rounded border p-4 bg-gray-50 text-sm overflow-auto max-h-96 whitespace-pre-wrap">
-          {result}
-        </pre>
-      )}
     </div>
   );
 }

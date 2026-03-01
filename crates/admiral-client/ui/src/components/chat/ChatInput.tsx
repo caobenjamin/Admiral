@@ -5,15 +5,17 @@ interface ChatInputProps {
   placeholder?: string;
   disabled?: boolean;
   loading?: boolean;
+  quickActions?: string[];
 }
 
-const defaultPlaceholder = "输入指令或描述任务…";
+const defaultPlaceholder = "输入指令或描述任务...";
 
 export function ChatInput({
   onSend,
   placeholder = defaultPlaceholder,
   disabled = false,
   loading = false,
+  quickActions = [],
 }: ChatInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -22,7 +24,7 @@ export function ChatInput({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 130)}px`;
   }, [value]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -37,42 +39,67 @@ export function ChatInput({
     if (!text || disabled || loading) return;
     onSend(text);
     setValue("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+  };
+
+  const applyQuickAction = (template: string) => {
+    setValue((prev) => (prev ? `${prev}\n${template}` : template));
+    textareaRef.current?.focus();
   };
 
   return (
-    <div
-      className="chat-input-focus flex gap-2 items-end p-3 rounded-lg border transition-[border-color,box-shadow] duration-150"
-      style={{
-        borderColor: "var(--admiral-border)",
-        borderRadius: 8,
-      }}
-    >
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        disabled={disabled}
-        rows={1}
-        className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2 px-3 text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed bg-transparent"
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {quickActions.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {quickActions.map((item) => (
+            <button
+              key={item}
+              type="button"
+              className="admiral-chip"
+              style={{ cursor: "pointer" }}
+              onClick={() => applyQuickAction(item)}
+              disabled={disabled || loading}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div
+        className="chat-input-focus admiral-field"
         style={{
-          borderRadius: "var(--admiral-radius-input)",
-          color: "var(--admiral-text-primary)",
+          display: "flex",
+          gap: 8,
+          alignItems: "flex-end",
+          padding: 8,
         }}
-        aria-label="输入消息"
-      />
-      <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={disabled || loading || !value.trim()}
-        className="btn btn-primary shrink-0"
       >
-        {loading ? "发送中…" : "发送"}
-      </button>
+        <textarea
+          ref={textareaRef}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          disabled={disabled}
+          rows={1}
+          className="flex-1 min-h-[38px] max-h-[130px] resize-none py-2 px-3 text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed bg-transparent"
+          style={{
+            borderRadius: "var(--admiral-radius-input)",
+            color: "var(--admiral-text-primary)",
+          }}
+          aria-label="输入消息"
+        />
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={disabled || loading || !value.trim()}
+          className="btn btn-primary shrink-0"
+          style={{ minWidth: 74 }}
+        >
+          {loading ? "发送中" : "发送"}
+        </button>
+      </div>
     </div>
   );
 }

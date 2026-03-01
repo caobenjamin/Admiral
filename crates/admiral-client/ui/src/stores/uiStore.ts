@@ -8,7 +8,7 @@ export type ActiveTab = "media" | "tasks" | "skills" | "other";
 
 const TASK_LIST_WIDTH_MIN = 240;
 const TASK_LIST_WIDTH_MAX = 400;
-const TASK_LIST_WIDTH_DEFAULT = 300;
+const TASK_LIST_WIDTH_DEFAULT = 320;
 
 interface UiState {
   connectionStatus: ConnectionStatus;
