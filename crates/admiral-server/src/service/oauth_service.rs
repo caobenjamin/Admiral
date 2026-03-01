@@ -18,10 +18,15 @@ const TOKEN_URL: &str = "https://cm.bilibili.com/takumi/api/open_api/oauth2/toke
 const USERINFO_URL: &str = "https://cm.bilibili.com/takumi/api/open_api/oauth2/userinfo";
 const ADVERTISERS_URL: &str = "https://cm.bilibili.com/takumi/api/open_api/oauth2/advertisers";
 
-/// external_request_log 中 oauth 刷新记录的 kind
+/// external_request_log 中 oauth 各类请求的 kind
 const EXTERNAL_LOG_KIND_OAUTH_REFRESH: &str = "oauth_refresh";
-/// 响应体落表最大长度（字节），UTF-8 安全截断
+const EXTERNAL_LOG_KIND_OAUTH_TOKEN_EXCHANGE: &str = "oauth_token_exchange";
+const EXTERNAL_LOG_KIND_OAUTH_USERINFO: &str = "oauth_userinfo";
+const EXTERNAL_LOG_KIND_OAUTH_ADVERTISERS: &str = "oauth_advertisers";
+/// 刷新响应体落表最大长度（字节），UTF-8 安全截断
 const OAUTH_REFRESH_RESPONSE_BODY_LOG_MAX: usize = 4096;
+/// callback / userinfo / advertisers 响应体落表最大长度（2KB）
+const OAUTH_CALLBACK_RESPONSE_BODY_LOG_MAX: usize = 2048;
 
 #[derive(Clone)]
 pub struct OauthService {
@@ -176,6 +181,13 @@ impl OauthService {
             ("client_secret", self.app_secret.as_str()),
             ("redirect_uri", self.callback_url.as_str()),
         ];
+        let request_body_log = serde_json::json!({
+            "grant_type": "authorization_code",
+            "client_id": self.app_id,
+            "redirect_uri": self.callback_url,
+        })
+        .to_string();
+
         let resp = self
             .http
             .post(TOKEN_URL)
@@ -183,17 +195,104 @@ impl OauthService {
             .send()
             .await
             .map_err(|e| AppError::Upstream(e.to_string()))?;
-        let _status = resp.status();
-        let body: BiliTokenResponse = resp
-            .json()
+        let status = resp.status().as_u16();
+        let bytes = resp
+            .bytes()
             .await
             .map_err(|e| AppError::Upstream(e.to_string()))?;
+        let raw = String::from_utf8_lossy(&bytes).to_string();
+        let response_body_log = if raw.len() > OAUTH_CALLBACK_RESPONSE_BODY_LOG_MAX {
+            format!(
+                "{}... (truncated)",
+                crate::utils::truncate_utf8_at(&raw, OAUTH_CALLBACK_RESPONSE_BODY_LOG_MAX)
+            )
+        } else {
+            raw.clone()
+        };
+
+        let body_result: Result<BiliTokenResponse, _> = serde_json::from_slice(bytes.as_ref());
+        let body = match body_result {
+            Err(e) => {
+                let err_msg = format!("error decoding response body: {}", e);
+                let _ = crate::service::log_service::log_external_request(
+                    &self.db,
+                    EXTERNAL_LOG_KIND_OAUTH_TOKEN_EXCHANGE,
+                    TOKEN_URL,
+                    "POST",
+                    Some(&request_body_log),
+                    Some(status),
+                    Some(&response_body_log),
+                    Some(&err_msg),
+                    Some(user_id),
+                )
+                .await;
+                return Err(AppError::Upstream(err_msg));
+            }
+            Ok(b) => b,
+        };
         if body.code != 0 {
-            return Err(AppError::Upstream(
-                body.message.unwrap_or_else(|| "bilibili token error".into()),
-            ));
+            let err_msg = body
+                .message
+                .clone()
+                .unwrap_or_else(|| "bilibili token error".into());
+            let _ = crate::service::log_service::log_external_request(
+                &self.db,
+                EXTERNAL_LOG_KIND_OAUTH_TOKEN_EXCHANGE,
+                TOKEN_URL,
+                "POST",
+                Some(&request_body_log),
+                Some(status),
+                Some(&response_body_log),
+                Some(&err_msg),
+                Some(user_id),
+            )
+            .await;
+            return Err(AppError::Upstream(err_msg));
         }
-        let data = body.data.ok_or(AppError::Upstream("no data in response".into()))?;
+        let data = match body.data {
+            Some(d) => d,
+            None => {
+                let _ = crate::service::log_service::log_external_request(
+                    &self.db,
+                    EXTERNAL_LOG_KIND_OAUTH_TOKEN_EXCHANGE,
+                    TOKEN_URL,
+                    "POST",
+                    Some(&request_body_log),
+                    Some(status),
+                    Some(&response_body_log),
+                    Some("no data in response"),
+                    Some(user_id),
+                )
+                .await;
+                return Err(AppError::Upstream("no data in response".into()));
+            }
+        };
+        let success_body_log = serde_json::json!({
+            "code": body.code,
+            "message": body.message,
+            "data": { "expires_in": data.expires_in, "refresh_expires_in": data.refresh_expires_in },
+        });
+        let success_str = success_body_log.to_string();
+        let success_truncated = if success_str.len() > OAUTH_CALLBACK_RESPONSE_BODY_LOG_MAX {
+            format!(
+                "{}... (truncated)",
+                crate::utils::truncate_utf8_at(&success_str, OAUTH_CALLBACK_RESPONSE_BODY_LOG_MAX)
+            )
+        } else {
+            success_str
+        };
+        let _ = crate::service::log_service::log_external_request(
+            &self.db,
+            EXTERNAL_LOG_KIND_OAUTH_TOKEN_EXCHANGE,
+            TOKEN_URL,
+            "POST",
+            Some(&request_body_log),
+            Some(status),
+            Some(&success_truncated),
+            None,
+            Some(user_id),
+        )
+        .await;
         let expires_at = Utc::now() + chrono::Duration::seconds(data.expires_in);
         let refresh_expires_at = data
             .refresh_expires_in
@@ -208,20 +307,79 @@ impl OauthService {
             .await
         {
             Ok(resp) => {
-                let ui_resp: BiliUserinfoResponse = resp
-                    .json()
-                    .await
-                    .unwrap_or(BiliUserinfoResponse {
-                        code: -1,
-                        message: Some("parse error".into()),
-                        data: None,
-                    });
-                ui_resp
-                    .data
-                    .map(|d| (d.bid, d.user_name))
-                    .unwrap_or((None, None))
+                let status = resp.status().as_u16();
+                let bytes = resp.bytes().await.unwrap_or_default();
+                let raw = String::from_utf8_lossy(&bytes).to_string();
+                let response_body_log = if raw.len() > OAUTH_CALLBACK_RESPONSE_BODY_LOG_MAX {
+                    format!(
+                        "{}... (truncated)",
+                        crate::utils::truncate_utf8_at(&raw, OAUTH_CALLBACK_RESPONSE_BODY_LOG_MAX)
+                    )
+                } else {
+                    raw.clone()
+                };
+                let ui_result: Result<BiliUserinfoResponse, _> = serde_json::from_slice(bytes.as_ref());
+                match ui_result {
+                    Err(e) => {
+                        let err_msg = format!("error decoding response body: {}", e);
+                        let _ = crate::service::log_service::log_external_request(
+                            &self.db,
+                            EXTERNAL_LOG_KIND_OAUTH_USERINFO,
+                            USERINFO_URL,
+                            "GET",
+                            None,
+                            Some(status),
+                            Some(&response_body_log),
+                            Some(&err_msg),
+                            Some(user_id),
+                        )
+                        .await;
+                        (None, None)
+                    }
+                    Ok(ui_resp) => {
+                        let err_msg = if ui_resp.code != 0 {
+                            ui_resp
+                                .message
+                                .clone()
+                                .unwrap_or_else(|| "bilibili userinfo error".into())
+                        } else {
+                            String::new()
+                        };
+                        let _ = crate::service::log_service::log_external_request(
+                            &self.db,
+                            EXTERNAL_LOG_KIND_OAUTH_USERINFO,
+                            USERINFO_URL,
+                            "GET",
+                            None,
+                            Some(status),
+                            Some(&response_body_log),
+                            if err_msg.is_empty() { None } else { Some(&err_msg) },
+                            Some(user_id),
+                        )
+                        .await;
+                        ui_resp
+                            .data
+                            .map(|d| (d.bid, d.user_name))
+                            .unwrap_or((None, None))
+                    }
+                }
             }
-            Err(_) => (None, None),
+            Err(e) => {
+                let err_msg = e.to_string();
+                let _ = crate::service::log_service::log_external_request(
+                    &self.db,
+                    EXTERNAL_LOG_KIND_OAUTH_USERINFO,
+                    USERINFO_URL,
+                    "GET",
+                    None,
+                    None,
+                    None,
+                    Some(&err_msg),
+                    Some(user_id),
+                )
+                .await;
+                (None, None)
+            }
         };
 
         self.vault
@@ -292,6 +450,7 @@ impl OauthService {
             .get(token_id)
             .await?
             .ok_or(AppError::NotFound("oauth_token".into()))?;
+        let request_url = format!("{}?page=1&size=100", ADVERTISERS_URL);
         let resp = self
             .http
             .get(ADVERTISERS_URL)
@@ -300,15 +459,57 @@ impl OauthService {
             .send()
             .await
             .map_err(|e| AppError::Upstream(e.to_string()))?;
+        let status = resp.status().as_u16();
         let text = resp.text().await.map_err(|e| AppError::Upstream(e.to_string()))?;
-        let body: BiliAdvertisersResponse = serde_json::from_str(&text).map_err(|e| {
-            let snippet = text.chars().take(500).collect::<String>();
-            AppError::Upstream(format!(
-                "error decoding response body: {}; body snippet: {}",
-                e, snippet
-            ))
-        })?;
-        Ok(body)
+        let response_body_log = if text.len() > OAUTH_CALLBACK_RESPONSE_BODY_LOG_MAX {
+            format!(
+                "{}... (truncated)",
+                crate::utils::truncate_utf8_at(&text, OAUTH_CALLBACK_RESPONSE_BODY_LOG_MAX)
+            )
+        } else {
+            text.clone()
+        };
+        let body_result: Result<BiliAdvertisersResponse, _> = serde_json::from_str(&text);
+        match body_result {
+            Err(e) => {
+                let err_msg = format!("error decoding response body: {}", e);
+                let _ = crate::service::log_service::log_external_request(
+                    &self.db,
+                    EXTERNAL_LOG_KIND_OAUTH_ADVERTISERS,
+                    &request_url,
+                    "GET",
+                    None,
+                    Some(status),
+                    Some(&response_body_log),
+                    Some(&err_msg),
+                    Some(user_id),
+                )
+                .await;
+                Err(AppError::Upstream(err_msg))
+            }
+            Ok(body) => {
+                let err_msg = if body.code != 0 {
+                    body.message
+                        .clone()
+                        .unwrap_or_else(|| "bilibili advertisers error".into())
+                } else {
+                    String::new()
+                };
+                let _ = crate::service::log_service::log_external_request(
+                    &self.db,
+                    EXTERNAL_LOG_KIND_OAUTH_ADVERTISERS,
+                    &request_url,
+                    "GET",
+                    None,
+                    Some(status),
+                    Some(&response_body_log),
+                    if err_msg.is_empty() { None } else { Some(&err_msg) },
+                    Some(user_id),
+                )
+                .await;
+                Ok(body)
+            }
+        }
     }
 
     /// Get access_token for (user_id, account_id). Refreshes if expiring within 5 minutes.
