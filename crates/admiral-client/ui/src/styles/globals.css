@@ -504,6 +504,128 @@ body {
   pointer-events: none;
 }
 
+.markdown-content {
+  font-size: 14px;
+  line-height: 1.7;
+  color: inherit;
+  word-break: break-word;
+}
+
+.markdown-content > div + div {
+  margin-top: 8px;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  margin: 0;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.markdown-content h1 {
+  font-size: 22px;
+}
+
+.markdown-content h2 {
+  font-size: 19px;
+}
+
+.markdown-content h3 {
+  font-size: 16px;
+}
+
+.markdown-content p {
+  margin: 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.markdown-content li + li {
+  margin-top: 2px;
+}
+
+.markdown-content blockquote {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--admiral-border-strong);
+  background: rgba(255, 255, 255, 0.45);
+  border-radius: 8px;
+}
+
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--admiral-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border-bottom: 1px solid var(--admiral-border);
+  border-right: 1px solid var(--admiral-border);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-content tr:last-child td {
+  border-bottom: none;
+}
+
+.markdown-content th:last-child,
+.markdown-content td:last-child {
+  border-right: none;
+}
+
+.markdown-content th {
+  font-weight: 700;
+  background: #f7fbff;
+}
+
+.markdown-content pre {
+  margin: 0;
+  overflow-x: auto;
+  border: 1px solid var(--admiral-border);
+  border-radius: 10px;
+  background: #f8fbff;
+  padding: 10px;
+}
+
+.markdown-content code {
+  font-family: var(--admiral-font-mono);
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(15, 108, 189, 0.1);
+}
+
+.markdown-content pre code {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.markdown-content a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.markdown-content hr {
+  margin: 2px 0;
+  border: none;
+  border-top: 1px solid var(--admiral-border);
+}
+
 @keyframes page-in {
   from {
     opacity: 0;

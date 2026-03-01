@@ -37,6 +37,7 @@ export function HomePage() {
   const { chat, loading, error } = useAgent(null);
   const navigate = useNavigate();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [showTaskDetail, setShowTaskDetail] = useState(true);
 
   useEffect(() => {
     loadUserAndLicense().then((ok) => {
@@ -75,9 +76,19 @@ export function HomePage() {
       }}
     >
       <div style={{ flex: 1, minHeight: 0, overflow: "auto", paddingBottom: 12 }}>
-        <TaskDetail />
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <button
+            type="button"
+            className="btn btn-default btn-small"
+            onClick={() => setShowTaskDetail((v) => !v)}
+          >
+            {showTaskDetail ? "隐藏任务详情" : "展开任务详情"}
+          </button>
+        </div>
 
-        <div className="admiral-surface" style={{ marginTop: 12, padding: 12 }}>
+        {showTaskDetail && <TaskDetail />}
+
+        <div className="admiral-surface" style={{ marginTop: showTaskDetail ? 12 : 0, padding: 12 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
             <div>
               <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: "var(--admiral-text-primary)" }}>Agent 对话</h3>

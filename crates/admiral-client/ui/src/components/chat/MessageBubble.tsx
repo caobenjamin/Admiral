@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { MarkdownContent } from "./MarkdownContent";
 
 export type MessageRole = "user" | "assistant" | "system" | "tool";
 
@@ -138,10 +139,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           {isUser ? "我" : "Admiral"}
         </span>
 
-        {assistantLong && !expanded ? (
+        {isUser ? (
+          <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{message.content}</div>
+        ) : assistantLong && !expanded ? (
           <div>
-            <div className="message-fade" style={{ maxHeight: 130, overflow: "hidden", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-              {message.content}
+            <div className="message-fade" style={{ maxHeight: 130, overflow: "hidden" }}>
+              <MarkdownContent content={message.content} />
             </div>
             <button
               type="button"
@@ -153,7 +156,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             </button>
           </div>
         ) : (
-          <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{message.content}</div>
+          <MarkdownContent content={message.content} />
         )}
 
         {assistantLong && expanded && (

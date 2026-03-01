@@ -24,7 +24,7 @@ export function ChatInput({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 130)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   }, [value]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -72,7 +72,8 @@ export function ChatInput({
           display: "flex",
           gap: 8,
           alignItems: "flex-end",
-          padding: 8,
+          padding: 10,
+          minHeight: 86,
         }}
       >
         <textarea
@@ -82,9 +83,21 @@ export function ChatInput({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={disabled}
-          rows={1}
-          className="flex-1 min-h-[38px] max-h-[130px] resize-none py-2 px-3 text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed bg-transparent"
+          rows={2}
+          className="disabled:opacity-50 disabled:cursor-not-allowed"
           style={{
+            flex: 1,
+            width: "100%",
+            minWidth: 0,
+            minHeight: 64,
+            maxHeight: 180,
+            resize: "none",
+            padding: "10px 12px",
+            fontSize: 16,
+            lineHeight: 1.5,
+            border: "none",
+            outline: "none",
+            background: "transparent",
             borderRadius: "var(--admiral-radius-input)",
             color: "var(--admiral-text-primary)",
           }}
@@ -95,7 +108,7 @@ export function ChatInput({
           onClick={handleSubmit}
           disabled={disabled || loading || !value.trim()}
           className="btn btn-primary shrink-0"
-          style={{ minWidth: 74 }}
+          style={{ minWidth: 86, height: 38 }}
         >
           {loading ? "发送中" : "发送"}
         </button>
