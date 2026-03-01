@@ -7,9 +7,10 @@
 - 使用**自定义报表接口**（open_api/report/v3/custom/query）。
 - 必填：account_id、start_time、end_time（格式 yyyy-MM-DD）。
 - **一次只能查一天**：start_time 与 end_time 必须相同；查多日需分次调用。
-- 常用指标：charged_cost_milli（花费，毫分，元 = 值/10^5）、show_count（展示量）、click_count（点击量）。
-- dimensions 可填 date、date_time、account_id、campaign_id、unit_id、creative_id 等。
-- filters 无过滤时传空数组 []；order_by 必传，为单个对象 { field, type }，field 须在 metrics 中，type 为 "1" 升序 "2" 降序。
+- 常用指标：charged_cost_milli（花费，毫分，元 = 值/10^5）、show_count（展示量）、click_count（点击量）；**metrics 至少包含** show_count、click_count、charged_cost_milli。
+- dimensions 仅允许：date_time、account_id、campaign_id、unit_id、creative_id（不要用 date，用 date_time）。
+- filters 无过滤时传空数组 []。
+- order_by 必传，且为**数组且仅 1 个元素**，如 `[{ "field": "charged_cost_milli", "type": "2" }]`；field 须在 metrics 中，**type 为字符串** "1" 升序 "2" 降序；metrics 必须包含排序字段。
 
 ## 分优化目标看消耗
 

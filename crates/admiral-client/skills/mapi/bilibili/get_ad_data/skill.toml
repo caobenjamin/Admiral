@@ -27,9 +27,32 @@ rate_limit = "30/min"
 
 [skill.llm_tool]
 name = "bili_report_query"
-description = "查询广告自定义报表。必填：account_id、start_time 与 end_time（格式 yyyy-MM-DD，且必须相同即只查一天）、dimensions（字符串数组，如 date_time/account_id/campaign_id/unit_id/creative_id/date）、metrics（字符串数组，如 show_count/click_count/charged_cost_milli）、filters（对象数组，每项含 field 与 values，无过滤时传 []）、order_by（单个对象 {field, type}，field 须在 metrics 中，type 为 1 升序 2 降序）、page、size（最大100）。花费用 charged_cost_milli（毫分）。"
+description = "查询广告自定义报表。必填：account_id、start_time 与 end_time（yyyy-MM-DD 且相同，只查一天）、dimensions（仅允许 date_time/account_id/campaign_id/unit_id/creative_id）、metrics（至少含 show_count/click_count/charged_cost_milli，排序字段须在其中）、filters（对象数组，无则 []）、order_by（仅 1 个元素的数组 [{ field, type }]，field 须在 metrics 中，type 为字符串 \"1\" 升序 \"2\" 降序）、page、size（最大100）。"
 
 [skill.llm_tool.parameters_schema]
 type = "object"
 required = ["account_id", "start_time", "end_time", "dimensions", "metrics", "filters", "order_by", "page", "size"]
-properties = { account_id = { type = "integer", description = "广告主账户ID" }, start_time = { type = "string", description = "开始日期 yyyy-MM-DD" }, end_time = { type = "string", description = "结束日期 yyyy-MM-DD，必须与 start_time 相同（只支持查一天）" }, dimensions = { type = "array", description = "维度：date_time/account_id/campaign_id/unit_id/creative_id/date", items = { type = "string" } }, metrics = { type = "array", description = "指标：show_count/click_count/charged_cost_milli 等", items = { type = "string" } }, filters = { type = "array", description = "过滤条件，无则 []" }, order_by = { type = "object", description = "排序对象 field 与 type" }, page = { type = "integer", description = "页码，默认1" }, size = { type = "integer", description = "每页数量，最大100" } }
+# order_by: array 且仅 1 个元素；元素为 { field: string, type: "1"|"2" }
+[skill.llm_tool.parameters_schema.properties]
+account_id = { type = "integer", description = "广告主账户ID" }
+start_time = { type = "string", description = "开始日期 yyyy-MM-DD" }
+end_time = { type = "string", description = "结束日期 yyyy-MM-DD，必须与 start_time 相同" }
+dimensions = { type = "array", description = "维度，仅允许: date_time, account_id, campaign_id, unit_id, creative_id", items = { type = "string" } }
+metrics = { type = "array", description = "指标，至少含 show_count/click_count/charged_cost_milli；排序字段须在此列表中", items = { type = "string" } }
+filters = { type = "array", description = "过滤条件，无则 []" }
+page = { type = "integer", description = "页码，默认1" }
+size = { type = "integer", description = "每页数量，最大100" }
+
+[skill.llm_tool.parameters_schema.properties.order_by]
+type = "array"
+minItems = 1
+maxItems = 1
+description = "排序条件，仅 1 个元素；元素为 { field, type }，field 须在 metrics 中，type 为字符串 \"1\" 升序 \"2\" 降序"
+
+[skill.llm_tool.parameters_schema.properties.order_by.items]
+type = "object"
+required = ["field", "type"]
+
+[skill.llm_tool.parameters_schema.properties.order_by.items.properties]
+field = { type = "string", description = "排序字段，须在 metrics 中" }
+type = { type = "string", description = "排序类型：\"1\" 升序 \"2\" 降序" }
