@@ -142,7 +142,7 @@ pub async fn bind_accounts(
             req.subject_type,
             req.subject_id,
             req.account_ids,
-            None,
+            req.account_names,
         )
         .await?;
     Ok(axum::http::StatusCode::CREATED)

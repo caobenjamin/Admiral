@@ -89,6 +89,9 @@ pub struct BindAccountsRequest {
     pub subject_type: i32,
     pub subject_id: i32,
     pub account_ids: Vec<i64>,
+    /// 与 account_ids 一一对应的账户名称（来自 B 站 advertisers 列表），用于持久化展示
+    #[serde(default)]
+    pub account_names: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

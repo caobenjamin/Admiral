@@ -750,7 +750,11 @@ impl OauthService {
             return Err(AppError::AccountLimitExceeded(self.max_accounts_per_user));
         }
         let names: Vec<Option<String>> = account_names
-            .map(|v| v.into_iter().map(Some).collect())
+            .map(|v| {
+                v.into_iter()
+                    .map(|s| if s.is_empty() { None } else { Some(s) })
+                    .collect()
+            })
             .unwrap_or_else(|| (0..account_ids.len()).map(|_| None).collect());
         for (i, &account_id) in account_ids.iter().enumerate() {
             let account_id_str = account_id.to_string();

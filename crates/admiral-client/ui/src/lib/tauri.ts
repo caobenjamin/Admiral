@@ -78,7 +78,8 @@ export async function oauthBindAccounts(
   oauthTokenId: string,
   subjectType: number,
   subjectId: number,
-  accountIds: number[]
+  accountIds: number[],
+  accountNames?: (string | null)[]
 ): Promise<void> {
   return invoke("oauth_bind_accounts", {
     req: {
@@ -86,6 +87,7 @@ export async function oauthBindAccounts(
       subject_type: subjectType,
       subject_id: subjectId,
       account_ids: accountIds,
+      account_names: accountNames ?? undefined,
     },
   });
 }

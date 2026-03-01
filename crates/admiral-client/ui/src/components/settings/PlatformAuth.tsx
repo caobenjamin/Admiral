@@ -172,7 +172,10 @@ function BindAccountModal({
   }, [open, oauthSessionId, selectedSubject?.subject_type, selectedSubject?.subject_id, loadAccounts]);
 
   const handleBind = async () => {
-    if (!oauthSessionId || !selectedSubject || selectedAccountIds.length === 0) return;
+    if (!oauthSessionId || !selectedSubject || selectedAccountIds.length === 0 || !accounts) return;
+    const accountNames = selectedAccountIds.map(
+      (id) => accounts.records.find((r) => r.account_id === id)?.account_name ?? ""
+    );
     setBindLoading(true);
     setError("");
     try {
@@ -180,7 +183,8 @@ function BindAccountModal({
         oauthSessionId,
         selectedSubject.subject_type,
         selectedSubject.subject_id,
-        selectedAccountIds
+        selectedAccountIds,
+        accountNames
       );
       showToast("绑定成功", "success");
       onSuccess();
