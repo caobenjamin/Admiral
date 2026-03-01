@@ -431,6 +431,24 @@ impl OauthService {
     }
 
     /// Refresh a single token (used by token_refresh_job and optionally before MAPI call).
+
+    /// Run one full refresh cycle at startup: check all tokens (expiring within 365 days) and refresh those that need it.
+    pub async fn run_refresh_cycle_full(&self) {
+        let within = chrono::Duration::days(365);
+        let list = match self.vault.list_expiring_soon(within).await {
+            Ok(l) => l,
+            Err(e) => {
+                tracing::warn!("token_vault list_expiring_soon (full): {}", e);
+                return;
+            }
+        };
+        for (token_id, user_id) in list {
+            if let Err(e) = self.refresh_one(token_id, user_id).await {
+                tracing::warn!("refresh oauth_token {} failed: {}", token_id, e);
+            }
+        }
+    }
+
     /// Run one refresh cycle: find tokens expiring within 11 hours and refresh them.
     pub async fn run_refresh_cycle(&self) {
         let within = chrono::Duration::hours(11);

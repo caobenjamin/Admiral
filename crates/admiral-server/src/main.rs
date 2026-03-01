@@ -64,6 +64,8 @@ async fn main() -> anyhow::Result<()> {
                 db.clone(),
             );
             let oauth = Arc::new(svc);
+            // 启动时立刻检查并刷新所有即将过期的 token
+            oauth.run_refresh_cycle_full().await;
             let oauth_clone = Arc::clone(&oauth);
             let interval_secs = app_config.oauth.token_refresh_interval_hours * 3600;
             tokio::spawn(async move {
