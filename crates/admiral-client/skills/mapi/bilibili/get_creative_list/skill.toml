@@ -6,8 +6,8 @@ platform = "bilibili"
 version = "1.0.0"
 
 [skill.description]
-short = "查询指定单元下的广告创意列表"
-long = "调用 Bilibili Marketing API 查询广告创意信息。"
+short = "查询指定账户、计划或单元下的新三连创意列表"
+long = "调用 Bilibili Marketing API 批量查询新三连创意详情，包括创意名称、状态、审核状态及反馈、素材、落地页、监测链接等信息。"
 
 [skill.risk]
 level = "low"
@@ -18,9 +18,18 @@ is_reversible = true
 
 [skill.input]
 required = ["account_id"]
-optional = ["adgroup_id", "status", "page", "page_size"]
+optional = ["campaign_ids", "unit_ids", "creative_ids", "creative_status", "start_ctime", "end_ctime", "start_mtime", "end_mtime", "page", "size"]
 
 [skill.api]
 method = "GET"
-endpoint = "/v2/creative/list"
+path = "open_api/cpc/v3/creative/list_creatives"
 rate_limit = "60/min"
+
+[skill.llm_tool]
+name = "bili_creative_list"
+description = "查询指定账户下的新三连广告创意列表。可选：campaign_ids、unit_ids、creative_ids(逗号分隔，最多100个)、creative_status(1有效2已暂停3已完成4已删除5审核中6审核拒绝9落地页审核中，多选逗号)、page、size(默认10，范围1-100)。时间筛选为毫秒时间戳，起止跨度不超过24小时。"
+
+[skill.llm_tool.parameters_schema]
+type = "object"
+required = ["account_id"]
+properties = { account_id = { type = "integer", description = "广告主账户ID" }, campaign_ids = { type = "string", description = "计划ID列表，逗号分隔" }, unit_ids = { type = "string", description = "单元ID列表，逗号分隔" }, creative_ids = { type = "string", description = "创意ID列表，逗号分隔，最多100个" }, creative_status = { type = "string", description = "创意状态：1有效2已暂停3已完成4已删除5审核中6审核拒绝9落地页审核中，多选逗号" }, page = { type = "integer", description = "页码，默认1" }, size = { type = "integer", description = "每页数量，默认10，范围1-100" } }

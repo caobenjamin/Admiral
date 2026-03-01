@@ -106,57 +106,63 @@ fn chunk_markdown(content: &str, _source_file: &str) -> Vec<(String, Option<Stri
     chunks
 }
 
-/// Ingest all Markdown files from a directory into knowledge_chunks.
+/// Collect all .md files under dir recursively. Returns (relative_path, absolute_path).
+fn collect_md_files(dir: &Path) -> std::io::Result<Vec<(String, std::path::PathBuf)>> {
+    let mut out = Vec::new();
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            out.extend(collect_md_files(&path)?);
+        } else if path.extension().map_or(false, |e| e == "md") {
+            let rel = path.strip_prefix(dir).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| path.file_name().unwrap_or_default().to_string_lossy().to_string());
+            out.push((rel, path));
+        }
+    }
+    Ok(out)
+}
+
+/// Ingest all Markdown files from a directory (recursive) into knowledge_chunks.
 /// Replaces existing chunks for the same source_file. Returns number of chunks inserted.
 pub async fn ingest_from_dir(db: &sea_orm::DatabaseConnection, dir: &Path) -> Result<u32> {
     if !dir.is_dir() {
         return Ok(0);
     }
+    let files = collect_md_files(dir).map_err(anyhow::Error::msg)?;
     let mut total = 0u32;
-    let entries = fs::read_dir(dir).map_err(anyhow::Error::msg)?;
-    for entry in entries {
-        let entry = entry.map_err(anyhow::Error::msg)?;
-        let path = entry.path();
-        if path.extension().map_or(false, |e| e == "md") {
-            let source_file = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown.md")
-                .to_string();
-            let content = fs::read_to_string(&path).map_err(anyhow::Error::msg)?;
-            let chunks = chunk_markdown(&content, &source_file);
-            if chunks.is_empty() {
-                continue;
-            }
-            // Delete existing chunks for this file, then insert.
-            let del_sql = "DELETE FROM knowledge_chunks WHERE source_file = $1";
+    for (source_file, path) in files {
+        let content = fs::read_to_string(&path).map_err(anyhow::Error::msg)?;
+        let chunks = chunk_markdown(&content, &source_file);
+        if chunks.is_empty() {
+            continue;
+        }
+        let del_sql = "DELETE FROM knowledge_chunks WHERE source_file = $1";
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            del_sql,
+            [sea_orm::Value::String(Some(Box::new(source_file.clone())))],
+        ))
+        .await?;
+
+        for (content, title, chunk_index) in chunks {
+            let id = Uuid::new_v4();
+            let metadata = "{}";
+            let ins_sql = r#"INSERT INTO knowledge_chunks (id, source_file, chunk_index, title, content, metadata, created_at, updated_at)
+                            VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW(), NOW())"#;
             db.execute(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                del_sql,
-                [sea_orm::Value::String(Some(Box::new(source_file.clone())))],
+                ins_sql,
+                [
+                    sea_orm::Value::Uuid(Some(Box::new(id))),
+                    sea_orm::Value::String(Some(Box::new(source_file.clone()))),
+                    sea_orm::Value::Int(Some(chunk_index as i32)),
+                    sea_orm::Value::String(title.map(Box::new)),
+                    sea_orm::Value::String(Some(Box::new(content))),
+                    sea_orm::Value::String(Some(Box::new(metadata.to_string()))),
+                ],
             ))
             .await?;
-
-            for (content, title, chunk_index) in chunks {
-                let id = Uuid::new_v4();
-                let metadata = "{}";
-                let ins_sql = r#"INSERT INTO knowledge_chunks (id, source_file, chunk_index, title, content, metadata, created_at, updated_at)
-                                VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW(), NOW())"#;
-                db.execute(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    ins_sql,
-                    [
-                        sea_orm::Value::Uuid(Some(Box::new(id))),
-                        sea_orm::Value::String(Some(Box::new(source_file.clone()))),
-                        sea_orm::Value::Int(Some(chunk_index as i32)),
-                        sea_orm::Value::String(title.map(Box::new)),
-                        sea_orm::Value::String(Some(Box::new(content))),
-                        sea_orm::Value::String(Some(Box::new(metadata.to_string()))),
-                    ],
-                ))
-                .await?;
-                total += 1;
-            }
+            total += 1;
         }
     }
     Ok(total)

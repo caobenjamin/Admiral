@@ -1,13 +1,13 @@
 [skill]
 id = "bili.report.query"
-name = "查询B站广告数据报表"
+name = "查询B站广告自定义报表"
 category = "mapi"
 platform = "bilibili"
 version = "1.0.0"
 
 [skill.description]
-short = "查询广告投放数据报表"
-long = "调用 Bilibili Marketing API 查询广告投放数据，支持按日期、维度汇总。"
+short = "查询自定义投放报表数据，支持多维度多指标组合；一次只能查一天（start_time 与 end_time 必须相同）"
+long = "调用 Bilibili Marketing API 自定义报表接口。支持按日期/小时、账户/计划/单元/创意等维度，查询展示、点击、消耗等指标。仅返回有消耗的数据。金额建议用 charged_cost_milli（毫分，元=值/10^5）。一次请求仅支持查询一天，多日需分次调用。"
 
 [skill.risk]
 level = "low"
@@ -17,10 +17,19 @@ requires_user_confirm = false
 is_reversible = true
 
 [skill.input]
-required = ["account_id", "start_date", "end_date"]
-optional = ["dimensions", "metrics", "filters"]
+required = ["account_id", "start_time", "end_time", "dimensions", "metrics", "filters", "order_by", "page", "size"]
+optional = []
 
 [skill.api]
 method = "POST"
-endpoint = "/v2/report/query"
+path = "open_api/report/v3/custom/query"
 rate_limit = "30/min"
+
+[skill.llm_tool]
+name = "bili_report_query"
+description = "查询广告自定义报表。必填：account_id、start_time 与 end_time（格式 yyyy-MM-DD，且必须相同即只查一天）、dimensions（字符串数组，如 date_time/account_id/campaign_id/unit_id/creative_id/date）、metrics（字符串数组，如 show_count/click_count/charged_cost_milli）、filters（对象数组，每项含 field 与 values，无过滤时传 []）、order_by（单个对象 {field, type}，field 须在 metrics 中，type 为 1 升序 2 降序）、page、size（最大100）。花费用 charged_cost_milli（毫分）。"
+
+[skill.llm_tool.parameters_schema]
+type = "object"
+required = ["account_id", "start_time", "end_time", "dimensions", "metrics", "filters", "order_by", "page", "size"]
+properties = { account_id = { type = "integer", description = "广告主账户ID" }, start_time = { type = "string", description = "开始日期 yyyy-MM-DD" }, end_time = { type = "string", description = "结束日期 yyyy-MM-DD，必须与 start_time 相同（只支持查一天）" }, dimensions = { type = "array", description = "维度：date_time/account_id/campaign_id/unit_id/creative_id/date", items = { type = "string" } }, metrics = { type = "array", description = "指标：show_count/click_count/charged_cost_milli 等", items = { type = "string" } }, filters = { type = "array", description = "过滤条件，无则 []" }, order_by = { type = "object", description = "排序对象 field 与 type" }, page = { type = "integer", description = "页码，默认1" }, size = { type = "integer", description = "每页数量，最大100" } }

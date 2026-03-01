@@ -207,3 +207,26 @@ pub fn load_all_skills(base: &Path) -> Vec<SkillDefinition> {
     }
     skills
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mapi_skills_have_open_api_paths() {
+        let base = skills_base_dir();
+        let skills = load_all_skills(&base);
+        let by_id: std::collections::HashMap<_, _> = skills.iter().map(|s| (s.id.as_str(), s)).collect();
+        let expected = [
+            ("bili.campaign.list", "open_api/cpc/v3/campaign/list_campaigns"),
+            ("bili.adgroup.list", "open_api/cpc/v3/unit/list_units"),
+            ("bili.creative.list", "open_api/cpc/v3/creative/list_creatives"),
+            ("bili.report.query", "open_api/report/v3/custom/query"),
+        ];
+        for (id, path) in &expected {
+            let s = by_id.get(id).expect(&format!("skill {} should be loaded", id));
+            let api_path = s.api.as_ref().map(|a| a.path.as_str()).unwrap_or("");
+            assert_eq!(api_path, *path, "skill {} path", id);
+        }
+    }
+}

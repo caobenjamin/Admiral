@@ -6,8 +6,8 @@ platform = "bilibili"
 version = "1.0.0"
 
 [skill.description]
-short = "查询指定账户下的广告计划列表"
-long = "调用 Bilibili Marketing API 查询广告计划，支持按状态、名称等筛选。"
+short = "查询指定账户下的新三连计划列表"
+long = "调用 Bilibili Marketing API 批量查询新三连计划信息，支持按计划ID、状态、创建/更新时间筛选。"
 
 [skill.risk]
 level = "low"
@@ -18,9 +18,18 @@ is_reversible = true
 
 [skill.input]
 required = ["account_id"]
-optional = ["status", "name_filter", "page", "page_size"]
+optional = ["campaign_ids", "campaign_status", "start_ctime", "end_ctime", "start_mtime", "end_mtime", "page", "size"]
 
 [skill.api]
 method = "GET"
-endpoint = "/v2/campaign/list"
+path = "open_api/cpc/v3/campaign/list_campaigns"
 rate_limit = "60/min"
+
+[skill.llm_tool]
+name = "bili_campaign_list"
+description = "查询指定账户下的新三连广告计划列表。可选：campaign_ids(逗号分隔，最多100个)、campaign_status(1有效2已暂停3已结束4已删除5预算超限，多选用逗号)、page、size(默认10，范围1-100)。时间筛选为毫秒时间戳，起止跨度不超过24小时。"
+
+[skill.llm_tool.parameters_schema]
+type = "object"
+required = ["account_id"]
+properties = { account_id = { type = "integer", description = "广告主账户ID" }, campaign_ids = { type = "string", description = "计划ID列表，逗号分隔，最多100个" }, campaign_status = { type = "string", description = "计划状态：1有效2已暂停3已结束4已删除5预算超限，多选逗号分隔" }, page = { type = "integer", description = "页码，默认1" }, size = { type = "integer", description = "每页数量，默认10，范围1-100" } }
