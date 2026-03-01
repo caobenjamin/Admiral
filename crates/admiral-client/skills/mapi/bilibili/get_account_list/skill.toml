@@ -1,13 +1,15 @@
+# 本地已绑定账户列表，数据来自 ad_account_bindings，不调用任何外部接口。
+# 当用户未明确 account_id 时，应先调用本工具获取可选账户。
 [skill]
 id = "bili.account.list"
-name = "获取B站广告账户列表"
-category = "mapi"
+name = "获取本地已绑定B站广告账户列表"
+category = "tools"
 platform = "bilibili"
 version = "1.0.0"
 
 [skill.description]
-short = "获取当前授权下可管理的广告账户列表"
-long = "调用 Bilibili Marketing API 获取所有可管理的广告账户信息。"
+short = "获取当前用户已绑定的 B 站广告账户列表（仅本地，不调外部接口）"
+long = "从本地绑定表返回当前用户已授权并绑定的 B 站广告账户，返回 account_id、account_name。未绑定时需用户先完成授权并同步账户。无需传入 account_id。"
 
 [skill.risk]
 level = "low"
@@ -16,7 +18,13 @@ requires_test_run = false
 requires_user_confirm = false
 is_reversible = true
 
-[skill.api]
-method = "GET"
-endpoint = "/v2/account/list"
-rate_limit = "30/min"
+# 无 [skill.api]：不走 MAPI，由执行器直接查服务端 bindings 接口
+
+[skill.llm_tool]
+name = "bili_account_list_local"
+description = "获取当前用户已绑定的 B 站广告账户列表（本地）。当用户未提供 account_id 时先调用此工具；返回 0 条则提示「请先授权并同步账户」；1 条则直接使用该 account_id；多条则让用户按 account_name 选择。无需任何参数。"
+
+[skill.llm_tool.parameters_schema]
+type = "object"
+required = []
+properties = {}

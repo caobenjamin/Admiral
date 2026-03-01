@@ -422,7 +422,7 @@ impl OauthService {
         let rows = ad_account_binding::Entity::find()
             .filter(ad_account_binding::Column::UserId.eq(user_id))
             .filter(ad_account_binding::Column::Platform.eq("bilibili"))
-            .order_by_asc(ad_account_binding::Column::CreatedAt)
+            .order_by_desc(ad_account_binding::Column::CreatedAt)
             .all(&self.db)
             .await?;
         let out: Vec<BoundAccountRecord> = rows

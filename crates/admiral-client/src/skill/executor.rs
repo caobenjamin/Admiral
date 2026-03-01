@@ -44,7 +44,11 @@ impl SkillExecutor {
                     .ok_or_else(|| anyhow::anyhow!("MAPI skill requires access_token"))?;
                 self.execute_mapi(&skill, &call, token).await
             }
-            admiral_types::skill::SkillCategory::Tools => self.execute_tools(&skill, &call).await,
+            admiral_types::skill::SkillCategory::Tools => {
+                let token = access_token
+                    .ok_or_else(|| anyhow::anyhow!("Tools skill (e.g. account list) requires access_token"))?;
+                self.execute_tools(&skill, &call, token).await
+            }
             admiral_types::skill::SkillCategory::Semantic => {
                 return Err(anyhow::anyhow!("semantic skills are executed by LLM, not by executor"));
             }
@@ -105,11 +109,42 @@ impl SkillExecutor {
 
     async fn execute_tools(
         &self,
-        _skill: &SkillDefinition,
+        skill: &SkillDefinition,
         _call: &SkillCall,
+        access_token: &str,
     ) -> Result<serde_json::Value, anyhow::Error> {
+        if skill.id == "bili.account.list" {
+            return self.execute_bili_account_list_local(access_token).await;
+        }
         Err(anyhow::anyhow!(
-            "tools skills not implemented yet (excel_export, email_sender)"
+            "tools skill not implemented: {} (excel_export, email_sender)",
+            skill.id
         ))
+    }
+
+    /// 本地已绑定账户列表：调用服务端 bindings 接口，不经过 MAPI。
+    async fn execute_bili_account_list_local(
+        &self,
+        access_token: &str,
+    ) -> Result<serde_json::Value, anyhow::Error> {
+        let bindings = self
+            .api_client
+            .oauth_bindings_list(access_token)
+            .await
+            .map_err(|e| anyhow::anyhow!("oauth_bindings_list: {}", e))?;
+        let records: Vec<serde_json::Value> = bindings
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "account_id": r.account_id,
+                    "account_name": r.account_name,
+                })
+            })
+            .collect();
+        let total = records.len() as i64;
+        Ok(serde_json::json!({
+            "records": records,
+            "total": total,
+        }))
     }
 }
