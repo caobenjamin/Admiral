@@ -66,20 +66,21 @@ export interface BoundAccountRecord {
 
 // ---------- Task ----------
 export type TaskType = "instant" | "cron" | "heartbeat";
+
+export type TaskCategory = "data_fetch" | "create" | "update" | "mixed";
+
 export type TaskStatus =
   | "draft"
   | "planning"
   | "plan_ready"
-  | "dry_running"
-  | "dry_run_passed"
-  | "test_running"
-  | "test_run_passed"
-  | "deployed"
   | "scheduled"
   | "running"
+  | "waiting_for_approval"
   | "paused"
   | "succeeded"
-  | "failed";
+  | "partially_succeeded"
+  | "failed"
+  | "cancelled";
 
 export interface TaskStep {
   seq: number;
@@ -100,6 +101,7 @@ export interface Task {
   name: string;
   description: string | null;
   task_type: TaskType;
+  task_category: TaskCategory;
   status: TaskStatus;
   plan: TaskPlan | null;
   platform: string;
@@ -123,15 +125,48 @@ export interface StepResult {
   duration_ms?: number | null;
 }
 
+export type RunType = "dry_run" | "test_run" | "production";
+
+export type RunStatus =
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "waiting_for_approval"
+  | "partially_succeeded";
+
 export interface TaskRun {
   id: string;
   task_id: string;
-  run_type: "dry_run" | "test_run" | "production";
-  status: "running" | "succeeded" | "failed" | "cancelled";
+  run_type: RunType;
+  status: RunStatus;
   started_at: string;
   finished_at?: string | null;
   step_results: StepResult[];
   error?: string | null;
+  resume_from_step?: number | null;
+  completed_steps: number[];
+}
+
+export interface PendingApproval {
+  task_id: string;
+  run_id: string;
+  step_seq: number;
+  skill_id: string;
+  operation: string;
+  params_summary: string;
+}
+
+export type PermissionScope = "platform" | "task";
+
+export interface OperationPermission {
+  id: string;
+  scope_type: PermissionScope;
+  scope_id: string;
+  operation: string;
+  auto_approve: boolean;
+  granted_at: string;
+  expires_at?: string | null;
 }
 
 // ---------- Agent ----------

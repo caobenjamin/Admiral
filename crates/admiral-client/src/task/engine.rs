@@ -1,7 +1,7 @@
 //! Task engine: orchestrates task lifecycle, state transitions, persistence.
 
 use admiral_types::task::{
-    Task, TaskStatus, TaskType, TaskTrigger, RunType,
+    Task, TaskCategory, TaskStatus, TaskType, TaskTrigger, RunType, RunStatus,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -33,6 +33,7 @@ impl TaskEngine {
         name: String,
         description: Option<String>,
         task_type: TaskType,
+        task_category: TaskCategory,
     ) -> anyhow::Result<Task> {
         let id = Uuid::new_v4();
         let now = Utc::now();
@@ -41,6 +42,7 @@ impl TaskEngine {
             name,
             description,
             task_type,
+            task_category,
             status: TaskStatus::Draft,
             plan: None,
             platform: "bilibili".to_string(),
@@ -85,12 +87,18 @@ impl TaskEngine {
         Ok(())
     }
 
+    /// Execute a task plan and auto-transition the task status based on the result.
     pub async fn run(
         &self,
-        task: &Task,
+        task: &mut Task,
         run_type: RunType,
         access_token: Option<&str>,
     ) -> anyhow::Result<admiral_types::task::TaskRun> {
+        // Transition to Running before execution
+        if task.status != TaskStatus::Running {
+            self.transition_to(task, TaskStatus::Running)?;
+        }
+
         let run = executor::execute_plan(
             task,
             run_type,
@@ -99,9 +107,80 @@ impl TaskEngine {
             access_token,
         )
         .await?;
+
         let path = db::models::db_path();
         let conn = db::models::open_rw(&path)?;
         db::models::insert_task_run(&conn, &run)?;
+
+        // Auto-transition based on run result
+        let new_status = match run.status {
+            RunStatus::Succeeded => {
+                match task.task_type {
+                    TaskType::Cron | TaskType::Heartbeat => TaskStatus::Scheduled,
+                    TaskType::Instant => TaskStatus::Succeeded,
+                }
+            }
+            RunStatus::Failed => TaskStatus::Failed,
+            RunStatus::PartiallySucceeded => TaskStatus::PartiallySucceeded,
+            RunStatus::WaitingForApproval => TaskStatus::WaitingForApproval,
+            RunStatus::Cancelled => TaskStatus::Cancelled,
+            RunStatus::Running => TaskStatus::Running,
+        };
+
+        if task.status != new_status {
+            task.status = new_status;
+            task.updated_at = Utc::now();
+            // Direct save (skip state machine validation since the executor decided)
+            self.save_task(task)?;
+        }
+
+        Ok(run)
+    }
+
+    /// Resume a previously partially-succeeded task from a specific step.
+    pub async fn resume_run(
+        &self,
+        task: &mut Task,
+        from_step: Option<u32>,
+        run_type: RunType,
+        access_token: Option<&str>,
+    ) -> anyhow::Result<admiral_types::task::TaskRun> {
+        self.transition_to(task, TaskStatus::Running)?;
+
+        let run = executor::execute_plan_from_step(
+            task,
+            run_type,
+            from_step,
+            self.skill_registry.as_ref(),
+            self.skill_executor.as_ref(),
+            access_token,
+        )
+        .await?;
+
+        let path = db::models::db_path();
+        let conn = db::models::open_rw(&path)?;
+        db::models::insert_task_run(&conn, &run)?;
+
+        let new_status = match run.status {
+            RunStatus::Succeeded => {
+                match task.task_type {
+                    TaskType::Cron | TaskType::Heartbeat => TaskStatus::Scheduled,
+                    TaskType::Instant => TaskStatus::Succeeded,
+                }
+            }
+            RunStatus::Failed => TaskStatus::Failed,
+            RunStatus::PartiallySucceeded => TaskStatus::PartiallySucceeded,
+            RunStatus::WaitingForApproval => TaskStatus::WaitingForApproval,
+            RunStatus::Cancelled => TaskStatus::Cancelled,
+            RunStatus::Running => TaskStatus::Running,
+        };
+
+        if task.status != new_status {
+            task.status = new_status;
+            task.updated_at = Utc::now();
+            self.save_task(task)?;
+        }
+
         Ok(run)
     }
 }

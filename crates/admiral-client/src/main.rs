@@ -40,6 +40,12 @@ fn main() {
             tauri_bridge::task_run_dry_run,
             tauri_bridge::task_run_test_run,
             tauri_bridge::task_run_production,
+            tauri_bridge::task_resume,
+            tauri_bridge::task_approve_operation,
+            tauri_bridge::task_reject_operation,
+            tauri_bridge::task_get_pending_approval,
+            tauri_bridge::permission_list,
+            tauri_bridge::permission_revoke,
             tauri_bridge::agent_chat,
         ])
         .run(tauri::generate_context!())

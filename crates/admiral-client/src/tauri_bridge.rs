@@ -3,19 +3,23 @@
 use crate::commands::auth::{self, AuthContext};
 use crate::config::ClientConfig;
 use crate::credential::PlainFileCredentialStore;
+use crate::db;
 use crate::network::api_client::ApiClient;
+use crate::agent::memory::MemoryStore;
+use crate::agent::memory_updater;
 use crate::agent::runtime::{AgentResponse, AgentRuntime};
-use crate::agent::context::Session;
+use crate::agent::context::{Message, Session};
 use crate::skill::registry::SkillRegistry;
 use crate::task::engine::TaskEngine;
 use admiral_types::api::*;
-use admiral_types::task::{Task, TaskStatus, TaskType};
+use admiral_types::task::{Task, TaskCategory, TaskStatus, TaskType};
 use std::sync::Arc;
 use uuid::Uuid;
 
 /// App state held by Tauri (thread-safe).
 pub struct AppState {
     pub auth: Arc<AuthContext>,
+    pub api_client: Arc<ApiClient>,
     pub task_engine: Arc<TaskEngine>,
     pub agent_runtime: Arc<tokio::sync::RwLock<Option<AgentRuntime>>>,
 }
@@ -175,19 +179,16 @@ pub async fn open_url(url: String) -> Result<(), String> {
 
 // ---------- Client config (persistent config file) ----------
 
-/// Path to the config file (e.g. ~/.config/admiral/client.json). Frontend can show this for manual edit.
 #[tauri::command]
 pub fn get_config_path() -> Option<String> {
     ClientConfig::config_file_path().and_then(|p| p.into_os_string().into_string().ok())
 }
 
-/// Current server API base URL (from config file + env, as loaded at startup).
 #[tauri::command]
 pub fn get_server_url() -> String {
     ClientConfig::from_env().api_base_url
 }
 
-/// Save server URL to the persistent config file. Restart the app for the new URL to take effect.
 #[tauri::command]
 pub fn set_server_url(url: String) -> Result<(), String> {
     let mut config = ClientConfig::from_env();
@@ -203,12 +204,14 @@ pub async fn task_create(
     name: String,
     description: Option<String>,
     task_type: TaskType,
+    task_category: Option<TaskCategory>,
 ) -> Result<Task, String> {
     crate::commands::task::create_task(
         state.task_engine.as_ref(),
         name,
         description,
         task_type,
+        task_category.unwrap_or_default(),
     )
 }
 
@@ -257,26 +260,6 @@ pub async fn task_run_test_run(
 }
 
 #[tauri::command]
-pub async fn agent_chat(
-    state: tauri::State<'_, AppState>,
-    message: String,
-    task_id: Option<String>,
-) -> Result<AgentResponse, String> {
-    let token = state.auth.get_access_token().map_err(|e| e.to_string())?;
-    let session = Session {
-        id: uuid::Uuid::new_v4().to_string(),
-        task_id: task_id.and_then(|s| uuid::Uuid::parse_str(&s).ok()),
-        messages: Vec::new(),
-    };
-    let guard = state.agent_runtime.read().await;
-    let runtime = guard.as_ref().ok_or("Agent not initialized")?;
-    runtime
-        .process_message(session, &message, Some(&token))
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 pub async fn task_run_production(
     state: tauri::State<'_, AppState>,
     task_id: String,
@@ -291,6 +274,175 @@ pub async fn task_run_production(
     .await
 }
 
+#[tauri::command]
+pub async fn task_resume(
+    state: tauri::State<'_, AppState>,
+    task_id: String,
+    from_step: Option<u32>,
+    run_type: Option<String>,
+) -> Result<admiral_types::task::TaskRun, String> {
+    let id = Uuid::parse_str(&task_id).map_err(|e| e.to_string())?;
+    let rt = match run_type.as_deref() {
+        Some("dry_run") => admiral_types::task::RunType::DryRun,
+        Some("test_run") => admiral_types::task::RunType::TestRun,
+        _ => admiral_types::task::RunType::Production,
+    };
+    crate::commands::task::resume_task(
+        state.task_engine.as_ref(),
+        state.auth.as_ref(),
+        id,
+        from_step,
+        rt,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn task_approve_operation(
+    state: tauri::State<'_, AppState>,
+    task_id: String,
+    auto_approve_future: bool,
+) -> Result<admiral_types::task::TaskRun, String> {
+    let id = Uuid::parse_str(&task_id).map_err(|e| e.to_string())?;
+    crate::commands::task::approve_operation(
+        state.task_engine.as_ref(),
+        state.auth.as_ref(),
+        id,
+        auto_approve_future,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn task_reject_operation(
+    state: tauri::State<'_, AppState>,
+    task_id: String,
+) -> Result<Task, String> {
+    let id = Uuid::parse_str(&task_id).map_err(|e| e.to_string())?;
+    crate::commands::task::reject_operation(state.task_engine.as_ref(), id)
+}
+
+#[tauri::command]
+pub async fn task_get_pending_approval(
+    task_id: String,
+) -> Result<Option<admiral_types::task::PendingApproval>, String> {
+    let id = Uuid::parse_str(&task_id).map_err(|e| e.to_string())?;
+    crate::commands::task::get_pending_approval(id)
+}
+
+#[tauri::command]
+pub async fn permission_list() -> Result<Vec<admiral_types::task::OperationPermission>, String> {
+    crate::commands::task::list_permissions()
+}
+
+#[tauri::command]
+pub async fn permission_revoke(id: String) -> Result<(), String> {
+    crate::commands::task::revoke_permission(id)
+}
+
+// ---------- Agent chat (with conversation persistence) ----------
+
+#[tauri::command]
+pub async fn agent_chat(
+    state: tauri::State<'_, AppState>,
+    message: String,
+    task_id: Option<String>,
+) -> Result<AgentResponse, String> {
+    let token = state.auth.get_access_token().map_err(|e| e.to_string())?;
+
+    let task_uuid = task_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
+    let session_id = task_uuid
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    // Load conversation history from DB
+    let mut messages: Vec<Message> = Vec::new();
+    if let Some(ref tid) = task_id {
+        let db_path = db::models::db_path();
+        if let Ok(conn) = db::models::open_ro(&db_path) {
+            if let Ok(rows) = db::models::load_conversations_by_task(&conn, tid) {
+                for row in rows {
+                    messages.push(Message {
+                        role: row.role,
+                        content: if row.content.is_empty() { None } else { Some(row.content) },
+                        tool_calls: row.tool_calls.and_then(|s| serde_json::from_str(&s).ok()),
+                        name: None,
+                        tool_call_id: None,
+                    });
+                }
+            }
+        }
+    }
+
+    let msg_count_before = messages.len();
+
+    let session = Session {
+        id: session_id.clone(),
+        task_id: task_uuid,
+        messages,
+    };
+
+    let guard = state.agent_runtime.read().await;
+    let runtime = guard.as_ref().ok_or("Agent not initialized")?;
+    let response = runtime
+        .process_message(session, &message, Some(&token))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Persist new messages to DB
+    let new_messages = &response.session.messages[msg_count_before..];
+    if !new_messages.is_empty() {
+        let db_path = db::models::db_path();
+        if let Ok(conn) = db::models::open_rw(&db_path) {
+            for msg in new_messages {
+                let row = db::models::ConversationRow {
+                    id: Uuid::new_v4().to_string(),
+                    task_id: task_id.clone(),
+                    session_id: session_id.clone(),
+                    role: msg.role.clone(),
+                    content: msg.content.clone().unwrap_or_default(),
+                    tool_calls: msg.tool_calls.as_ref().and_then(|v| serde_json::to_string(v).ok()),
+                    tool_result: None,
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                };
+                let _ = db::models::save_conversation_message(&conn, &row);
+            }
+        }
+    }
+
+    // Async memory update (non-blocking)
+    {
+        let api_client = Arc::clone(&state.api_client);
+        let token_owned = token.clone();
+        let user_msg = message.clone();
+        let ai_response = response.content.clone();
+        let task_id_clone = task_id.clone();
+        let task_uuid_clone = task_uuid;
+
+        tokio::spawn(async move {
+            let memory = match MemoryStore::new() {
+                Ok(m) => m,
+                Err(_) => return,
+            };
+
+            if let Some(tid) = task_uuid_clone {
+                let task_name = task_id_clone.as_deref().unwrap_or("unknown");
+                memory_updater::maybe_update_task_memory(
+                    tid, task_name, &user_msg, &ai_response, &memory, &api_client, &token_owned,
+                )
+                .await;
+            }
+
+            memory_updater::maybe_update_user_memory(
+                &user_msg, &ai_response, &memory, &api_client, &token_owned,
+            )
+            .await;
+        });
+    }
+
+    Ok(response)
+}
+
 /// Create AppState from config (used at startup).
 pub fn create_app_state() -> AppState {
     let config = ClientConfig::from_env();
@@ -302,7 +454,7 @@ pub fn create_app_state() -> AppState {
     let _ = skill_registry.load_from_default_dir();
     let skill_executor = Arc::new(crate::skill::executor::SkillExecutor::new(
         Arc::clone(&skill_registry),
-        api_client,
+        Arc::clone(&api_client),
     ));
     let task_engine = Arc::new(TaskEngine::new(
         Arc::clone(&skill_registry),
@@ -316,6 +468,7 @@ pub fn create_app_state() -> AppState {
 
     AppState {
         auth: Arc::new(auth),
+        api_client,
         task_engine,
         agent_runtime,
     }

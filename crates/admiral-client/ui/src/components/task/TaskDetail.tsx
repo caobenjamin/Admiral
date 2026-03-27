@@ -1,42 +1,53 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore, type TaskStatus } from "@/stores/taskStore";
 import { useTasks } from "@/hooks/useTasks";
 import { TaskTimeline } from "./TaskTimeline";
-import { ConfirmActions } from "./ConfirmActions";
 import { Button } from "@/components/common/Button";
+import type { PendingApproval } from "@/lib/types";
 
 function statusLabel(s: TaskStatus): string {
   const map: Record<string, string> = {
     draft: "草稿",
     planning: "规划中",
     plan_ready: "计划就绪",
-    dry_running: "Dry Run 中",
-    dry_run_passed: "Dry Run 通过",
-    test_running: "测试运行中",
-    test_run_passed: "测试通过",
-    deployed: "已部署",
-    running: "运行中",
     scheduled: "已排期",
+    running: "运行中",
+    waiting_for_approval: "等待确认",
     paused: "已暂停",
     succeeded: "已完成",
+    partially_succeeded: "部分完成",
     failed: "失败",
+    cancelled: "已取消",
   };
   return map[s] ?? s;
 }
 
 function statusClass(s: TaskStatus): string {
-  if (s === "running" || s === "dry_running" || s === "test_running") return "admiral-chip admiral-chip-warning";
-  if (s === "succeeded" || s === "dry_run_passed" || s === "test_run_passed") return "admiral-chip admiral-chip-success";
-  if (s === "failed") return "admiral-chip admiral-chip-danger";
-  if (s === "scheduled" || s === "deployed") return "admiral-chip admiral-chip-primary";
+  if (s === "running") return "admiral-chip admiral-chip-warning";
+  if (s === "succeeded") return "admiral-chip admiral-chip-success";
+  if (s === "failed" || s === "cancelled") return "admiral-chip admiral-chip-danger";
+  if (s === "waiting_for_approval") return "admiral-chip admiral-chip-warning";
+  if (s === "partially_succeeded") return "admiral-chip admiral-chip-warning";
+  if (s === "scheduled" || s === "plan_ready") return "admiral-chip admiral-chip-primary";
   return "admiral-chip";
 }
 
-function typeLabel(t: "instant" | "scheduled" | "heartbeat"): string {
+function typeLabel(t: string): string {
   if (t === "instant") return "即时任务";
   if (t === "heartbeat") return "心跳任务";
   return "定时任务";
+}
+
+function categoryLabel(c: string): string {
+  const map: Record<string, string> = {
+    data_fetch: "数据拉取",
+    create: "创建类",
+    update: "更新类",
+    mixed: "混合型",
+  };
+  return map[c] ?? c;
 }
 
 function formatDate(v: string): string {
@@ -50,12 +61,175 @@ function formatDate(v: string): string {
   });
 }
 
+function ApprovalPanel({
+  taskId,
+  approval,
+  onDone,
+}: {
+  taskId: string;
+  approval: PendingApproval;
+  onDone: () => void;
+}) {
+  const { approveOperation, rejectOperation } = useTasks();
+  const [loading, setLoading] = useState(false);
+
+  const handleApprove = async (autoFuture: boolean) => {
+    setLoading(true);
+    try {
+      await approveOperation(taskId, autoFuture);
+    } finally {
+      setLoading(false);
+      onDone();
+    }
+  };
+
+  const handleReject = async () => {
+    setLoading(true);
+    try {
+      await rejectOperation(taskId);
+    } finally {
+      setLoading(false);
+      onDone();
+    }
+  };
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--color-warning, #f0ad4e)",
+        borderRadius: 10,
+        padding: 14,
+        marginBottom: 12,
+        background: "rgba(240, 173, 78, 0.06)",
+      }}
+    >
+      <h4 style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 700 }}>操作确认</h4>
+      <p style={{ fontSize: 13, margin: "0 0 4px", color: "var(--admiral-text-secondary)" }}>
+        即将执行写操作 <strong>{approval.skill_id}</strong>（步骤 {approval.step_seq}）
+      </p>
+      <p style={{ fontSize: 12, margin: "0 0 10px", color: "var(--admiral-text-placeholder)", wordBreak: "break-all" }}>
+        {approval.params_summary.length > 200
+          ? approval.params_summary.slice(0, 200) + "..."
+          : approval.params_summary}
+      </p>
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button variant="primary" size="sm" disabled={loading} onClick={() => handleApprove(false)}>
+          仅此次批准
+        </Button>
+        <Button variant="secondary" size="sm" disabled={loading} onClick={() => handleApprove(true)}>
+          以后不再询问
+        </Button>
+        <Button variant="danger" size="sm" disabled={loading} onClick={handleReject}>
+          拒绝
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PartialSuccessPanel({
+  taskId,
+  taskCategory,
+  resumeFromStep,
+  completedSteps,
+  onDone,
+}: {
+  taskId: string;
+  taskCategory: string;
+  resumeFromStep?: number | null;
+  completedSteps: number[];
+  onDone: () => void;
+}) {
+  const { resumeTask } = useTasks();
+  const [loading, setLoading] = useState(false);
+
+  const defaultResume = taskCategory === "data_fetch" || taskCategory === "update";
+
+  const handleResume = async () => {
+    setLoading(true);
+    try {
+      await resumeTask(taskId, resumeFromStep, "production");
+    } finally {
+      setLoading(false);
+      onDone();
+    }
+  };
+
+  const handleFullRerun = async () => {
+    setLoading(true);
+    try {
+      await resumeTask(taskId, 0, "production");
+    } finally {
+      setLoading(false);
+      onDone();
+    }
+  };
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--color-warning, #f0ad4e)",
+        borderRadius: 10,
+        padding: 14,
+        marginBottom: 12,
+        background: "rgba(240, 173, 78, 0.06)",
+      }}
+    >
+      <h4 style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 700 }}>部分完成</h4>
+      <p style={{ fontSize: 13, margin: "0 0 4px", color: "var(--admiral-text-secondary)" }}>
+        已完成 {completedSteps.length} 个步骤，在步骤 {resumeFromStep ?? "?"} 处中断。
+      </p>
+      <p style={{ fontSize: 12, margin: "0 0 10px", color: "var(--admiral-text-placeholder)" }}>
+        任务类型：{categoryLabel(taskCategory)}
+        {defaultResume
+          ? "（建议从断点续跑）"
+          : taskCategory === "create"
+            ? "（建议全量重跑）"
+            : "（请选择）"}
+      </p>
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button
+          variant={defaultResume ? "primary" : "secondary"}
+          size="sm"
+          disabled={loading}
+          onClick={handleResume}
+        >
+          从断点续跑
+        </Button>
+        <Button
+          variant={!defaultResume ? "primary" : "secondary"}
+          size="sm"
+          disabled={loading}
+          onClick={handleFullRerun}
+        >
+          全量重跑
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function TaskDetail() {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const tasks = useTaskStore((s) => s.tasks);
   const task = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : null;
   const navigate = useNavigate();
-  const { runTestRun, runProduction, refresh } = useTasks();
+  const { getPendingApproval, refresh } = useTasks();
+
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+
+  useEffect(() => {
+    if (task?.status === "waiting_for_approval") {
+      getPendingApproval(task.id).then(setPendingApproval).catch(() => setPendingApproval(null));
+    } else {
+      setPendingApproval(null);
+    }
+  }, [task?.id, task?.status, getPendingApproval]);
+
+  const handleActionDone = async () => {
+    setPendingApproval(null);
+    await refresh();
+  };
 
   if (!task) {
     return (
@@ -75,31 +249,17 @@ export function TaskDetail() {
     );
   }
 
-  const showProgress = ["running", "dry_running", "test_running", "succeeded", "failed"].includes(task.status);
+  const showProgress = ["running", "succeeded", "failed", "partially_succeeded"].includes(task.status);
   const progressPercent =
     task.status === "succeeded"
       ? 100
       : task.status === "failed"
         ? 60
-        : ["running", "dry_running", "test_running"].includes(task.status)
-          ? 60
-          : 0;
-
-  const showConfirmActions = task.status === "dry_run_passed" || task.status === "test_run_passed";
-
-  const handleConfirm = async () => {
-    try {
-      if (task.status === "dry_run_passed") await runTestRun(task.id);
-      else if (task.status === "test_run_passed") await runProduction(task.id);
-      await refresh();
-    } catch {
-      await refresh();
-    }
-  };
-
-  const handleCancel = async () => {
-    await refresh();
-  };
+        : task.status === "partially_succeeded"
+          ? 50
+          : task.status === "running"
+            ? 60
+            : 0;
 
   return (
     <div className="admiral-surface" style={{ padding: 14 }}>
@@ -116,7 +276,7 @@ export function TaskDetail() {
           <div style={{ minWidth: 0 }}>
             <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: "var(--admiral-text-primary)" }}>{task.name || "未命名任务"}</h2>
             <p style={{ fontSize: 12, margin: "4px 0 0", color: "var(--admiral-text-secondary)" }}>
-              {typeLabel(task.type)} · 更新于 {formatDate(task.updated_at)}
+              {typeLabel(task.type)} · {categoryLabel(task.task_category)} · 更新于 {formatDate(task.updated_at)}
             </p>
           </div>
           <span className={statusClass(task.status)}>{statusLabel(task.status)}</span>
@@ -147,7 +307,9 @@ export function TaskDetail() {
                       ? "var(--color-danger)"
                       : task.status === "succeeded"
                         ? "var(--color-success)"
-                        : "var(--color-primary)",
+                        : task.status === "partially_succeeded"
+                          ? "var(--color-warning, #f0ad4e)"
+                          : "var(--color-primary)",
                 }}
               />
             </div>
@@ -155,18 +317,30 @@ export function TaskDetail() {
         )}
       </div>
 
+      {/* Approval panel */}
+      {task.status === "waiting_for_approval" && pendingApproval && (
+        <ApprovalPanel
+          taskId={task.id}
+          approval={pendingApproval}
+          onDone={handleActionDone}
+        />
+      )}
+
+      {/* Partial success recovery panel */}
+      {task.status === "partially_succeeded" && (
+        <PartialSuccessPanel
+          taskId={task.id}
+          taskCategory={task.task_category}
+          resumeFromStep={undefined}
+          completedSteps={[]}
+          onDone={handleActionDone}
+        />
+      )}
+
       <div style={{ marginBottom: 12 }}>
         <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--admiral-text-primary)", margin: "0 0 8px" }}>执行时间线</h3>
         <TaskTimeline hideTitle />
       </div>
-
-      {showConfirmActions && (
-        <ConfirmActions
-          stage={task.status === "dry_run_passed" ? "dry_run_passed" : "test_run_passed"}
-          onConfirm={handleConfirm}
-          onCancel={handleCancel}
-        />
-      )}
     </div>
   );
 }

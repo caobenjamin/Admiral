@@ -1,8 +1,15 @@
-// Tasks hook: CRUD operations, status updates
+// Tasks hook: CRUD operations, status updates, approval, resume, permissions
 
 import { useCallback, useState } from "react";
 import * as tauri from "../lib/tauri";
-import type { Task, TaskStatus, TaskRun } from "../lib/types";
+import type {
+  Task,
+  TaskStatus,
+  TaskRun,
+  TaskCategory,
+  PendingApproval,
+  OperationPermission,
+} from "../lib/types";
 
 export function useTasks(statusFilter?: TaskStatus | null) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -23,8 +30,13 @@ export function useTasks(statusFilter?: TaskStatus | null) {
   }, [statusFilter]);
 
   const createTask = useCallback(
-    async (name: string, description?: string | null, taskType: Task["task_type"] = "instant") => {
-      const task = await tauri.taskCreate(name, description, taskType);
+    async (
+      name: string,
+      description?: string | null,
+      taskType: Task["task_type"] = "instant",
+      taskCategory?: TaskCategory | null
+    ) => {
+      const task = await tauri.taskCreate(name, description, taskType, taskCategory);
       setTasks((prev) => [...prev, task]);
       return task;
     },
@@ -47,6 +59,39 @@ export function useTasks(statusFilter?: TaskStatus | null) {
     return tauri.taskRunProduction(taskId);
   }, []);
 
+  const resumeTask = useCallback(
+    async (taskId: string, fromStep?: number | null, runType?: string | null): Promise<TaskRun> => {
+      return tauri.taskResume(taskId, fromStep, runType);
+    },
+    []
+  );
+
+  const approveOperation = useCallback(
+    async (taskId: string, autoApproveFuture: boolean): Promise<TaskRun> => {
+      return tauri.taskApproveOperation(taskId, autoApproveFuture);
+    },
+    []
+  );
+
+  const rejectOperation = useCallback(async (taskId: string): Promise<Task> => {
+    return tauri.taskRejectOperation(taskId);
+  }, []);
+
+  const getPendingApproval = useCallback(
+    async (taskId: string): Promise<PendingApproval | null> => {
+      return tauri.taskGetPendingApproval(taskId);
+    },
+    []
+  );
+
+  const listPermissions = useCallback(async (): Promise<OperationPermission[]> => {
+    return tauri.permissionList();
+  }, []);
+
+  const revokePermission = useCallback(async (id: string): Promise<void> => {
+    return tauri.permissionRevoke(id);
+  }, []);
+
   return {
     tasks,
     loading,
@@ -57,5 +102,11 @@ export function useTasks(statusFilter?: TaskStatus | null) {
     runDryRun,
     runTestRun,
     runProduction,
+    resumeTask,
+    approveOperation,
+    rejectOperation,
+    getPendingApproval,
+    listPermissions,
+    revokePermission,
   };
 }

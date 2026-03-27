@@ -1,13 +1,11 @@
 interface ConfirmActionsProps {
-  stage: "dry_run_passed" | "test_run_passed";
+  stage: "plan_ready";
   onConfirm: () => void;
   onCancel: () => void;
   disabled?: boolean;
 }
 
-export function ConfirmActions({ stage, onConfirm, onCancel, disabled }: ConfirmActionsProps) {
-  const isDryRun = stage === "dry_run_passed";
-
+export function ConfirmActions({ stage: _stage, onConfirm, onCancel, disabled }: ConfirmActionsProps) {
   return (
     <div
       className="admiral-surface-raised"
@@ -18,16 +16,16 @@ export function ConfirmActions({ stage, onConfirm, onCancel, disabled }: Confirm
         alignItems: "center",
         justifyContent: "space-between",
         gap: 12,
-        borderLeft: "4px solid var(--color-success)",
+        borderLeft: "4px solid var(--color-primary)",
       }}
     >
       <div style={{ minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-          <span className="admiral-chip admiral-chip-success">{isDryRun ? "Dry Run 通过" : "Test Run 通过"}</span>
-          <span style={{ fontSize: 12, color: "var(--admiral-text-placeholder)" }}>下一步可执行</span>
+          <span className="admiral-chip admiral-chip-primary">计划就绪</span>
+          <span style={{ fontSize: 12, color: "var(--admiral-text-placeholder)" }}>可以开始执行</span>
         </div>
         <p style={{ margin: 0, fontSize: 13, color: "var(--admiral-text-secondary)" }}>
-          {isDryRun ? "系统已完成预演，建议执行 Test Run" : "测试运行已完成，可部署上线"}
+          执行计划已生成，确认后开始运行
         </p>
       </div>
 
@@ -35,8 +33,8 @@ export function ConfirmActions({ stage, onConfirm, onCancel, disabled }: Confirm
         <button type="button" onClick={onCancel} disabled={disabled} className="btn btn-default">
           暂不执行
         </button>
-        <button type="button" onClick={onConfirm} disabled={disabled} className={isDryRun ? "btn btn-primary" : "btn btn-success"}>
-          {isDryRun ? "开始 Test Run" : "部署上线"}
+        <button type="button" onClick={onConfirm} disabled={disabled} className="btn btn-primary">
+          开始执行
         </button>
       </div>
     </div>

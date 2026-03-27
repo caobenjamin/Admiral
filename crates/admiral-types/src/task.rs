@@ -16,23 +16,33 @@ pub enum TaskType {
     Heartbeat,
 }
 
+/// Business category of a task — influences partial-success recovery strategy in the UI.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskCategory {
+    DataFetch,
+    Create,
+    Update,
+    #[default]
+    Mixed,
+}
+
 /// Task lifecycle status.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
+    #[default]
     Draft,
     Planning,
     PlanReady,
-    DryRunning,
-    DryRunPassed,
-    TestRunning,
-    TestRunPassed,
-    Deployed,
     Scheduled,
     Running,
+    WaitingForApproval,
     Paused,
     Succeeded,
+    PartiallySucceeded,
     Failed,
+    Cancelled,
 }
 
 /// Trigger configuration (cron expression, heartbeat condition, next run time).
@@ -74,6 +84,7 @@ pub struct Task {
     #[serde(default)]
     pub description: Option<String>,
     pub task_type: TaskType,
+    pub task_category: TaskCategory,
     pub status: TaskStatus,
     #[serde(default)]
     pub plan: Option<TaskPlan>,
@@ -104,6 +115,8 @@ pub enum RunStatus {
     Succeeded,
     Failed,
     Cancelled,
+    WaitingForApproval,
+    PartiallySucceeded,
 }
 
 /// Result of a single step execution within a run.
@@ -134,4 +147,42 @@ pub struct TaskRun {
     pub step_results: Vec<StepResult>,
     #[serde(default)]
     pub error: Option<String>,
+    #[serde(default)]
+    pub resume_from_step: Option<u32>,
+    #[serde(default)]
+    pub completed_steps: Vec<u32>,
+}
+
+/// Pending approval info attached to a run that is waiting for user confirmation.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PendingApproval {
+    pub task_id: Uuid,
+    pub run_id: Uuid,
+    pub step_seq: u32,
+    pub skill_id: String,
+    pub operation: String,
+    pub params_summary: String,
+}
+
+// --------------- Operation Permissions ---------------
+
+/// Scope for an operation permission entry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionScope {
+    Platform,
+    Task,
+}
+
+/// A persisted auto-approve rule for write operations.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OperationPermission {
+    pub id: String,
+    pub scope_type: PermissionScope,
+    pub scope_id: String,
+    pub operation: String,
+    pub auto_approve: bool,
+    pub granted_at: DateTime<Utc>,
+    #[serde(default)]
+    pub expires_at: Option<DateTime<Utc>>,
 }

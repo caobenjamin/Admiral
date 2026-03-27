@@ -9,6 +9,14 @@ import type {
   TokenMeta,
   BiliSubjectRecord,
   OAuthAccountsResponse,
+  Task,
+  TaskType,
+  TaskCategory,
+  TaskStatus,
+  TaskRun,
+  PendingApproval,
+  OperationPermission,
+  AgentResponse,
 } from "./types";
 
 export async function authRegister(req: {
@@ -135,35 +143,67 @@ export async function getConfigPath(): Promise<string | null> {
 export async function taskCreate(
   name: string,
   description?: string | null,
-  taskType: import("./types").TaskType = "instant"
-): Promise<import("./types").Task> {
-  return invoke("task_create", { name, description, taskType });
+  taskType: TaskType = "instant",
+  taskCategory?: TaskCategory | null
+): Promise<Task> {
+  return invoke("task_create", { name, description, taskType, taskCategory: taskCategory ?? null });
 }
 
-export async function taskList(statusFilter?: import("./types").TaskStatus | null): Promise<import("./types").Task[]> {
+export async function taskList(statusFilter?: TaskStatus | null): Promise<Task[]> {
   return invoke("task_list", { statusFilter: statusFilter ?? null });
 }
 
-export async function taskGet(id: string): Promise<import("./types").Task | null> {
+export async function taskGet(id: string): Promise<Task | null> {
   return invoke("task_get", { id });
 }
 
-export async function taskRunDryRun(taskId: string): Promise<import("./types").TaskRun> {
+export async function taskRunDryRun(taskId: string): Promise<TaskRun> {
   return invoke("task_run_dry_run", { taskId });
 }
 
-export async function taskRunTestRun(taskId: string): Promise<import("./types").TaskRun> {
+export async function taskRunTestRun(taskId: string): Promise<TaskRun> {
   return invoke("task_run_test_run", { taskId });
 }
 
-export async function taskRunProduction(taskId: string): Promise<import("./types").TaskRun> {
+export async function taskRunProduction(taskId: string): Promise<TaskRun> {
   return invoke("task_run_production", { taskId });
+}
+
+export async function taskResume(
+  taskId: string,
+  fromStep?: number | null,
+  runType?: string | null
+): Promise<TaskRun> {
+  return invoke("task_resume", { taskId, fromStep: fromStep ?? null, runType: runType ?? null });
+}
+
+export async function taskApproveOperation(
+  taskId: string,
+  autoApproveFuture: boolean
+): Promise<TaskRun> {
+  return invoke("task_approve_operation", { taskId, autoApproveFuture });
+}
+
+export async function taskRejectOperation(taskId: string): Promise<Task> {
+  return invoke("task_reject_operation", { taskId });
+}
+
+export async function taskGetPendingApproval(taskId: string): Promise<PendingApproval | null> {
+  return invoke("task_get_pending_approval", { taskId });
+}
+
+export async function permissionList(): Promise<OperationPermission[]> {
+  return invoke("permission_list");
+}
+
+export async function permissionRevoke(id: string): Promise<void> {
+  return invoke("permission_revoke", { id });
 }
 
 // ---------- Agent ----------
 export async function agentChat(
   message: string,
   taskId?: string | null
-): Promise<import("./types").AgentResponse> {
+): Promise<AgentResponse> {
   return invoke("agent_chat", { message, taskId: taskId ?? null });
 }

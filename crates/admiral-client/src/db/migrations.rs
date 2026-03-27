@@ -1,10 +1,11 @@
-//! SQLite schema migrations: tasks, task_runs, logs, memory_entries, conversations, config.
+//! SQLite schema migrations: tasks, task_runs, logs, memory_entries, conversations, config,
+//! operation_permissions.
 
 use rusqlite::Connection;
 use std::path::Path;
 use tracing::info;
 
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 
 /// Run all migrations. Creates DB file and tables if they don't exist.
 pub fn run_migrations(db_path: &Path) -> anyhow::Result<()> {
@@ -15,13 +16,16 @@ pub fn run_migrations(db_path: &Path) -> anyhow::Result<()> {
         return Ok(());
     }
     if current == 0 {
-        create_schema(&conn)?;
-        conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        create_schema_v1(&conn)?;
     }
+    if current <= 1 {
+        migrate_v1_to_v2(&conn)?;
+    }
+    conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     Ok(())
 }
 
-fn create_schema(conn: &Connection) -> anyhow::Result<()> {
+fn create_schema_v1(conn: &Connection) -> anyhow::Result<()> {
     conn.execute_batch(
         r#"
         -- Tasks
@@ -126,6 +130,66 @@ fn create_schema(conn: &Connection) -> anyhow::Result<()> {
         );
         "#,
     )?;
-    info!("SQLite schema created");
+    info!("SQLite schema v1 created");
+    Ok(())
+}
+
+fn migrate_v1_to_v2(conn: &Connection) -> anyhow::Result<()> {
+    conn.execute_batch(
+        r#"
+        -- Operation permissions (auto-approve whitelist for write operations)
+        CREATE TABLE IF NOT EXISTS operation_permissions (
+            id           TEXT PRIMARY KEY,
+            scope_type   TEXT NOT NULL,
+            scope_id     TEXT NOT NULL,
+            operation    TEXT NOT NULL,
+            auto_approve INTEGER NOT NULL DEFAULT 0,
+            granted_at   TEXT NOT NULL,
+            expires_at   TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_op_perm_scope ON operation_permissions(scope_type, scope_id, operation);
+
+        -- Pending approvals (tracks which step is waiting for user confirmation)
+        CREATE TABLE IF NOT EXISTS pending_approvals (
+            id        TEXT PRIMARY KEY,
+            task_id   TEXT NOT NULL,
+            run_id    TEXT NOT NULL,
+            step_seq  INTEGER NOT NULL,
+            skill_id  TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            params_summary TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (task_id) REFERENCES tasks(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_pending_approvals_task ON pending_approvals(task_id);
+        "#,
+    )?;
+
+    // Add new columns to tasks (SQLite ALTER TABLE only supports ADD COLUMN one at a time)
+    let add_cols = [
+        "ALTER TABLE tasks ADD COLUMN task_category TEXT DEFAULT 'mixed'",
+        "ALTER TABLE tasks ADD COLUMN last_run_id TEXT",
+    ];
+    for sql in &add_cols {
+        if let Err(e) = conn.execute(sql, []) {
+            if !e.to_string().contains("duplicate column") {
+                return Err(e.into());
+            }
+        }
+    }
+
+    let add_run_cols = [
+        "ALTER TABLE task_runs ADD COLUMN resume_from_step INTEGER",
+        "ALTER TABLE task_runs ADD COLUMN completed_steps TEXT",
+    ];
+    for sql in &add_run_cols {
+        if let Err(e) = conn.execute(sql, []) {
+            if !e.to_string().contains("duplicate column") {
+                return Err(e.into());
+            }
+        }
+    }
+
+    info!("SQLite schema migrated to v2");
     Ok(())
 }

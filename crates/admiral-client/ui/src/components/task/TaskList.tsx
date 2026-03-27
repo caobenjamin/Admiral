@@ -9,33 +9,33 @@ function taskStatusLabel(s: TaskStatus): string {
     draft: "草稿",
     planning: "规划中",
     plan_ready: "计划就绪",
-    dry_running: "Dry Run",
-    dry_run_passed: "Dry Run 通过",
-    test_running: "测试中",
-    test_run_passed: "测试通过",
-    deployed: "已部署",
-    running: "运行中",
     scheduled: "已排期",
+    running: "运行中",
+    waiting_for_approval: "等待确认",
     paused: "已暂停",
     succeeded: "已完成",
+    partially_succeeded: "部分完成",
     failed: "失败",
+    cancelled: "已取消",
   };
   return map[s] ?? s;
 }
 
 function statusClass(s: TaskStatus): string {
-  if (s === "running" || s === "test_running" || s === "dry_running") return "admiral-chip admiral-chip-warning";
-  if (s === "succeeded" || s === "dry_run_passed" || s === "test_run_passed") return "admiral-chip admiral-chip-success";
-  if (s === "failed") return "admiral-chip admiral-chip-danger";
-  if (s === "scheduled" || s === "deployed") return "admiral-chip admiral-chip-primary";
+  if (s === "running") return "admiral-chip admiral-chip-warning";
+  if (s === "succeeded") return "admiral-chip admiral-chip-success";
+  if (s === "failed" || s === "cancelled") return "admiral-chip admiral-chip-danger";
+  if (s === "waiting_for_approval" || s === "partially_succeeded") return "admiral-chip admiral-chip-warning";
+  if (s === "scheduled" || s === "plan_ready") return "admiral-chip admiral-chip-primary";
   return "admiral-chip";
 }
 
 function statusDotColor(s: TaskStatus): string {
-  if (s === "running" || s === "test_running" || s === "dry_running") return "var(--color-warning)";
+  if (s === "running" || s === "waiting_for_approval") return "var(--color-warning)";
   if (s === "succeeded") return "var(--color-success)";
-  if (s === "failed") return "var(--color-danger)";
-  if (s === "scheduled" || s === "deployed") return "var(--color-primary)";
+  if (s === "failed" || s === "cancelled") return "var(--color-danger)";
+  if (s === "partially_succeeded") return "var(--color-warning)";
+  if (s === "scheduled" || s === "plan_ready") return "var(--color-primary)";
   return "#9fb3c8";
 }
 
@@ -208,9 +208,13 @@ export function TaskList() {
         >
           <option value="all">全部状态</option>
           <option value="running">运行中</option>
+          <option value="waiting_for_approval">等待确认</option>
+          <option value="partially_succeeded">部分完成</option>
           <option value="succeeded">已完成</option>
           <option value="failed">失败</option>
+          <option value="scheduled">已排期</option>
           <option value="draft">草稿</option>
+          <option value="cancelled">已取消</option>
         </select>
       </div>
 
