@@ -1,7 +1,7 @@
 //! Credential storage abstraction. This phase: plain file; later: encrypted file (§19.5).
 
 use crate::config::ClientConfig;
-use admiral_types::api::{TokenResponse, UserInfo};
+use admiral_types::api::TokenResponse;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
@@ -91,14 +91,5 @@ impl StoredCredential {
             user_name: Some(resp.user.name.clone()),
             user_role: Some(resp.user.role.clone()),
         }
-    }
-
-    pub fn to_user_info(&self) -> Option<UserInfo> {
-        Some(UserInfo {
-            id: self.user_id.clone()?,
-            email: self.user_email.clone()?,
-            name: self.user_name.clone().unwrap_or_default(),
-            role: self.user_role.clone().unwrap_or_else(|| "user".to_string()),
-        })
     }
 }

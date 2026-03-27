@@ -77,7 +77,7 @@ pub async fn execute_plan(
             .params
             .get("account_id")
             .and_then(|v| v.as_i64())
-            .or_else(|| task.account_ids.first().and_then(|s| s.parse().ok()))
+            .or_else(|| task.account_ids.first().copied())
             .or(resolved_account_id);
 
         if run_type == RunType::TestRun && !step_results.is_empty() {

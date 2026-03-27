@@ -1,7 +1,7 @@
 //! Task engine: orchestrates task lifecycle, state transitions, persistence.
 
 use admiral_types::task::{
-    Task, TaskStatus, TaskType, TaskTrigger, TriggerType, RunType,
+    Task, TaskStatus, TaskType, TaskTrigger, RunType,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -36,11 +36,6 @@ impl TaskEngine {
     ) -> anyhow::Result<Task> {
         let id = Uuid::new_v4();
         let now = Utc::now();
-        let trigger_type = match task_type {
-            TaskType::Instant => TriggerType::Instant,
-            TaskType::Cron => TriggerType::Cron,
-            TaskType::Heartbeat => TriggerType::Heartbeat,
-        };
         let task = Task {
             id,
             name,
@@ -51,7 +46,6 @@ impl TaskEngine {
             platform: "bilibili".to_string(),
             account_ids: Vec::new(),
             trigger: TaskTrigger {
-                trigger_type,
                 cron_expression: None,
                 heartbeat_condition: None,
                 next_run_at: None,
@@ -72,13 +66,13 @@ impl TaskEngine {
 
     pub fn get_task(&self, id: Uuid) -> anyhow::Result<Option<Task>> {
         let path = db::models::db_path();
-        let conn = db::models::open_rw(&path)?;
+        let conn = db::models::open_ro(&path)?;
         db::models::get_task(&conn, id)
     }
 
     pub fn list_tasks(&self, status_filter: Option<TaskStatus>) -> anyhow::Result<Vec<Task>> {
         let path = db::models::db_path();
-        let conn = db::models::open_rw(&path)?;
+        let conn = db::models::open_ro(&path)?;
         db::models::list_tasks(&conn, status_filter)
     }
 
@@ -91,52 +85,15 @@ impl TaskEngine {
         Ok(())
     }
 
-    pub async fn run_dry_run(
+    pub async fn run(
         &self,
         task: &Task,
+        run_type: RunType,
         access_token: Option<&str>,
     ) -> anyhow::Result<admiral_types::task::TaskRun> {
         let run = executor::execute_plan(
             task,
-            RunType::DryRun,
-            self.skill_registry.as_ref(),
-            self.skill_executor.as_ref(),
-            access_token,
-        )
-        .await?;
-        let path = db::models::db_path();
-        let conn = db::models::open_rw(&path)?;
-        db::models::insert_task_run(&conn, &run)?;
-        Ok(run)
-    }
-
-    pub async fn run_test_run(
-        &self,
-        task: &Task,
-        access_token: Option<&str>,
-    ) -> anyhow::Result<admiral_types::task::TaskRun> {
-        let run = executor::execute_plan(
-            task,
-            RunType::TestRun,
-            self.skill_registry.as_ref(),
-            self.skill_executor.as_ref(),
-            access_token,
-        )
-        .await?;
-        let path = db::models::db_path();
-        let conn = db::models::open_rw(&path)?;
-        db::models::insert_task_run(&conn, &run)?;
-        Ok(run)
-    }
-
-    pub async fn run_production(
-        &self,
-        task: &Task,
-        access_token: Option<&str>,
-    ) -> anyhow::Result<admiral_types::task::TaskRun> {
-        let run = executor::execute_plan(
-            task,
-            RunType::Production,
+            run_type,
             self.skill_registry.as_ref(),
             self.skill_executor.as_ref(),
             access_token,

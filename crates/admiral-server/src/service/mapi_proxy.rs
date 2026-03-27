@@ -29,25 +29,6 @@ const ALLOWED_DIMENSIONS: &[&str] = &[
 /// metrics 至少包含的指标（报表常用且排序字段须在其中）
 const DEFAULT_METRICS: &[&str] = &["show_count", "click_count", "charged_cost_milli"];
 
-fn truncate_for_log(bytes: &[u8], limit: usize) -> String {
-    if bytes.is_empty() {
-        return "(empty)".to_string();
-    }
-    match String::from_utf8(bytes.to_vec()) {
-        Ok(s) => {
-            if s.len() > limit {
-                format!(
-                    "{}... (truncated, total {} chars)",
-                    crate::utils::truncate_utf8_at(&s, limit),
-                    s.len()
-                )
-            } else {
-                s
-            }
-        }
-        Err(_) => format!("<binary, {} bytes>", bytes.len()),
-    }
-}
 
 /// 校验并规范化报表 custom/query 的 body：order_by 为长度 1 的数组，type 为字符串 "1"/"2"，
 /// dimensions 仅允许值，metrics 至少包含 show_count/click_count/charged_cost_milli。
@@ -228,22 +209,8 @@ pub async fn proxy(
         .or(body)
         .map(|b| serde_json::to_string(b).unwrap_or_else(|_| "<invalid json>".into()))
         .unwrap_or_else(|| "(none)".to_string());
-    let request_body_db = if request_body_log.len() > DB_BODY_MAX {
-        format!(
-            "{}... (truncated)",
-            crate::utils::truncate_utf8_at(&request_body_log, DB_BODY_MAX)
-        )
-    } else {
-        request_body_log.clone()
-    };
-    let req_body_display = if request_body_log.len() > BODY_LOG_LIMIT {
-        format!(
-            "{}... (truncated)",
-            crate::utils::truncate_utf8_at(&request_body_log, BODY_LOG_LIMIT)
-        )
-    } else {
-        request_body_log
-    };
+    let request_body_db = crate::utils::truncate_for_db(&request_body_log, DB_BODY_MAX);
+    let req_body_display = crate::utils::truncate_for_db(&request_body_log, BODY_LOG_LIMIT);
     info!(
         mapi_url = %url,
         mapi_method = %method,
@@ -298,15 +265,7 @@ pub async fn proxy(
         }
     };
     let bytes_slice = bytes.as_ref();
-    let response_body_db = String::from_utf8_lossy(bytes_slice);
-    let response_body_db = if response_body_db.len() > DB_BODY_MAX {
-        format!(
-            "{}... (truncated)",
-            crate::utils::truncate_utf8_at(&response_body_db, DB_BODY_MAX)
-        )
-    } else {
-        response_body_db.to_string()
-    };
+    let response_body_db = crate::utils::truncate_for_db(&String::from_utf8_lossy(bytes_slice), DB_BODY_MAX);
     if let Err(le) = crate::service::log_service::log_external_request(
         db,
         "mapi",
@@ -322,7 +281,7 @@ pub async fn proxy(
     {
         warn!(error = %le, "external_request_log insert failed");
     }
-    let response_log = truncate_for_log(bytes_slice, BODY_LOG_LIMIT);
+    let response_log = crate::utils::bytes_preview(bytes_slice, BODY_LOG_LIMIT);
     info!(
         mapi_status = status,
         mapi_response_body = %response_log,

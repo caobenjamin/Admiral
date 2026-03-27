@@ -1,7 +1,6 @@
 pub mod api;
 pub mod config;
 pub mod utils;
-pub mod domain;
 pub mod entities;
 pub mod error;
 pub mod infra;
@@ -9,5 +8,3 @@ pub mod migration;
 pub mod middleware;
 pub mod service;
 pub mod state;
-pub mod traits;
-pub mod ws;

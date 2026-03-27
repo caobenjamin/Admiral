@@ -118,13 +118,10 @@ impl SkillExecutor {
         &self,
         skill: &SkillDefinition,
         _call: &SkillCall,
-        access_token: &str,
+        _access_token: &str,
     ) -> Result<serde_json::Value, anyhow::Error> {
-        if skill.id == "bili.account.list" {
-            return self.execute_bili_account_list_local(access_token).await;
-        }
         Err(anyhow::anyhow!(
-            "tools skill not implemented: {} (excel_export, email_sender)",
+            "tools skill not implemented: {}",
             skill.id
         ))
     }

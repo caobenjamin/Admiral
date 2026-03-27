@@ -21,16 +21,5 @@ pub fn validate_call(skill: &SkillDefinition, call: &SkillCall) -> Result<(), St
         }
     }
 
-    if skill.category == admiral_types::skill::SkillCategory::Mapi
-        && skill.api.is_some()
-        && call.account_id.is_none()
-    {
-        if required.iter().any(|k| k.as_str() == "account_id") {
-            if !params.contains_key("account_id") {
-                return Err("MAPI skill requires account_id (in params or call.account_id)".to_string());
-            }
-        }
-    }
-
     Ok(())
 }

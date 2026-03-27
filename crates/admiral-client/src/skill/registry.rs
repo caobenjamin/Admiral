@@ -2,9 +2,8 @@
 
 use admiral_types::skill::{LlmFunctionDef, LlmToolDefinition, SkillDefinition};
 use std::collections::HashMap;
+use crate::skill::loader;
 use std::sync::RwLock;
-
-pub use crate::skill::loader;
 
 /// Registry of all loaded skills (thread-safe).
 pub struct SkillRegistry {

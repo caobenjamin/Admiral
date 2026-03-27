@@ -4,21 +4,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub use crate::skill::RiskLevel;
+use crate::skill::RiskLevel;
 
-/// Task type: instant (user-triggered), cron (scheduled), heartbeat (periodic check).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// Task type / trigger type: instant (user-triggered), cron (scheduled), heartbeat (periodic check).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskType {
-    Instant,
-    Cron,
-    Heartbeat,
-}
-
-/// Trigger type for scheduling.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TriggerType {
     #[default]
     Instant,
     Cron,
@@ -48,8 +39,6 @@ pub enum TaskStatus {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TaskTrigger {
     #[serde(default)]
-    pub trigger_type: TriggerType,
-    #[serde(default)]
     pub cron_expression: Option<String>,
     #[serde(default)]
     pub heartbeat_condition: Option<String>,
@@ -74,8 +63,6 @@ pub struct TaskStep {
 pub struct TaskPlan {
     pub steps: Vec<TaskStep>,
     #[serde(default)]
-    pub estimated_duration_secs: u64,
-    #[serde(default)]
     pub risk_level: Option<RiskLevel>,
 }
 
@@ -93,7 +80,7 @@ pub struct Task {
     #[serde(default)]
     pub platform: String,
     #[serde(default)]
-    pub account_ids: Vec<String>,
+    pub account_ids: Vec<i64>,
     #[serde(default)]
     pub trigger: TaskTrigger,
     pub created_at: DateTime<Utc>,

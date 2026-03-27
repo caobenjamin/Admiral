@@ -6,6 +6,14 @@ use rusqlite::params;
 use std::path::PathBuf;
 use uuid::Uuid;
 
+/// Serialize a serde-based enum to its snake_case string representation.
+fn enum_to_str<T: serde::Serialize>(val: &T) -> String {
+    serde_json::to_string(val)
+        .unwrap_or_default()
+        .trim_matches('"')
+        .to_string()
+}
+
 /// Base directory for Admiral local data (e.g. ~/.local/share/admiral).
 pub fn admiral_data_dir() -> PathBuf {
     let dir = dirs::data_local_dir()
@@ -42,9 +50,9 @@ pub fn upsert_task(conn: &rusqlite::Connection, task: &Task) -> anyhow::Result<(
         .and_then(|p| serde_json::to_string(p).ok());
     let account_ids_json = serde_json::to_string(&task.account_ids).unwrap_or_else(|_| "[]".to_string());
     let next_run_at = task.trigger.next_run_at.map(|t| t.to_rfc3339());
-    let trigger_type = serde_json::to_string(&task.trigger.trigger_type).unwrap_or_else(|_| "\"instant\"".to_string());
-    let trigger_type = trigger_type.trim_matches('"');
 
+    let task_type_str = enum_to_str(&task.task_type);
+    let status_str = enum_to_str(&task.status);
     conn.execute(
         r#"
         INSERT INTO tasks (id, name, description, task_type, status, plan, platform, account_ids,
@@ -61,12 +69,12 @@ pub fn upsert_task(conn: &rusqlite::Connection, task: &Task) -> anyhow::Result<(
             task.id.to_string(),
             task.name,
             task.description,
-            serde_json::to_string(&task.task_type).unwrap_or_default().trim_matches('"'),
-            serde_json::to_string(&task.status).unwrap_or_default().trim_matches('"'),
+            task_type_str,
+            status_str,
             plan_json,
             task.platform,
             account_ids_json,
-            trigger_type,
+            task_type_str,
             task.trigger.cron_expression,
             task.trigger.heartbeat_condition,
             next_run_at,
@@ -99,8 +107,7 @@ pub fn list_tasks(
     let sql = "SELECT id, name, description, task_type, status, plan, platform, account_ids, trigger_type, cron_expression, heartbeat_condition, next_run_at, created_at, updated_at FROM tasks";
     let out: Vec<Task> = match status_filter {
         Some(s) => {
-            let status_str = serde_json::to_string(&s).unwrap_or_default();
-            let status_str = status_str.trim_matches('"');
+            let status_str = enum_to_str(&s);
             let mut stmt = conn.prepare(&format!("{} WHERE status = ?1", sql))?;
             stmt.query_map(params![status_str], row_to_task)?
                 .filter_map(|r| r.ok())
@@ -114,14 +121,6 @@ pub fn list_tasks(
         }
     };
     Ok(out)
-}
-
-/// List tasks that are deployed and scheduled (for scheduler recovery).
-pub fn list_scheduled_tasks(conn: &rusqlite::Connection) -> anyhow::Result<Vec<Task>> {
-    list_tasks(
-        conn,
-        Some(TaskStatus::Scheduled),
-    )
 }
 
 /// List tasks that are heartbeat type and deployed (for heartbeat runner).
@@ -145,7 +144,7 @@ fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
     let plan_json: Option<String> = row.get(5)?;
     let platform: String = row.get(6).unwrap_or_else(|_| "bilibili".to_string());
     let account_ids_json: String = row.get(7).unwrap_or_else(|_| "[]".to_string());
-    let trigger_type_str: String = row.get(8).unwrap_or_else(|_| "instant".to_string());
+    let _trigger_type_str: String = row.get(8).unwrap_or_else(|_| "instant".to_string());
     let cron_expression: Option<String> = row.get(9)?;
     let heartbeat_condition: Option<String> = row.get(10)?;
     let next_run_at_str: Option<String> = row.get(11)?;
@@ -155,8 +154,7 @@ fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
     let task_type = serde_json::from_str::<TaskType>(&format!("\"{}\"", task_type_str)).unwrap_or(TaskType::Instant);
     let status = serde_json::from_str::<TaskStatus>(&format!("\"{}\"", status_str)).unwrap_or(TaskStatus::Draft);
     let plan = plan_json.and_then(|s| serde_json::from_str(&s).ok());
-    let account_ids: Vec<String> = serde_json::from_str(&account_ids_json).unwrap_or_default();
-    let trigger_type = serde_json::from_str::<admiral_types::task::TriggerType>(&format!("\"{}\"", trigger_type_str)).unwrap_or_default();
+    let account_ids: Vec<i64> = serde_json::from_str(&account_ids_json).unwrap_or_default();
     let next_run_at = next_run_at_str.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|t| t.with_timezone(&Utc)));
     let created_at = DateTime::parse_from_rfc3339(&created_at_str).map(|t| t.with_timezone(&Utc)).unwrap_or_else(|_| Utc::now());
     let updated_at = DateTime::parse_from_rfc3339(&updated_at_str).map(|t| t.with_timezone(&Utc)).unwrap_or_else(|_| Utc::now());
@@ -171,7 +169,6 @@ fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
         platform,
         account_ids,
         trigger: admiral_types::task::TaskTrigger {
-            trigger_type,
             cron_expression,
             heartbeat_condition,
             next_run_at,
@@ -192,8 +189,8 @@ pub fn insert_task_run(conn: &rusqlite::Connection, run: &TaskRun) -> anyhow::Re
         params![
             run.id.to_string(),
             run.task_id.to_string(),
-            serde_json::to_string(&run.run_type).unwrap_or_default().trim_matches('"'),
-            serde_json::to_string(&run.status).unwrap_or_default().trim_matches('"'),
+            enum_to_str(&run.run_type),
+            enum_to_str(&run.status),
             run.started_at.to_rfc3339(),
             run.finished_at.as_ref().map(|t| t.to_rfc3339()),
             step_results_json,

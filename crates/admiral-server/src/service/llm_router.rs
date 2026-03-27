@@ -24,25 +24,6 @@ fn body_preview(v: &Value, limit: usize) -> String {
     }
 }
 
-fn bytes_preview(bytes: &[u8], limit: usize) -> String {
-    if bytes.is_empty() {
-        return "(empty)".to_string();
-    }
-    match String::from_utf8(bytes.to_vec()) {
-        Ok(s) => {
-            if s.len() > limit {
-                format!(
-                    "{}... (truncated, {} chars)",
-                    crate::utils::truncate_utf8_at(&s, limit),
-                    s.len()
-                )
-            } else {
-                s
-            }
-        }
-        Err(_) => format!("<binary, {} bytes>", bytes.len()),
-    }
-}
 
 #[derive(Clone)]
 pub struct LlmProxy {
@@ -85,7 +66,7 @@ impl LlmProxy {
         let bytes_slice = bytes.as_ref();
         info!(
             llm_status = %status,
-            llm_response_body = %bytes_preview(bytes_slice, BODY_LOG_LIMIT),
+            llm_response_body = %crate::utils::bytes_preview(bytes_slice, BODY_LOG_LIMIT),
             "LLM external response"
         );
         if !status.is_success() {
@@ -129,22 +110,12 @@ impl LlmProxy {
     }
 }
 
-/// Build LlmProxy from provider name and optional env keys. Returns None if provider has no key.
-///
-/// 联调阶段仅启用 DeepSeek（deepseek-chat），其他厂商暂不解析。
-pub fn from_env(
-    default_provider: &str,
-    deepseek_key: Option<&str>,
-    _openai_key: Option<&str>,
-    _openai_base: Option<&str>,
-    _doubao_key: Option<&str>,
-    _doubao_base: Option<&str>,
-    _gemini_key: Option<&str>,
-) -> Option<LlmProxy> {
-    // 联调阶段仅 deepseek；其他厂商屏蔽，后续再开放
-    if default_provider.to_lowercase().as_str() != "deepseek" {
-        return None;
-    }
-    let (base_url, api_key) = deepseek_key.map(|k| ("https://api.deepseek.com".to_string(), k.to_string()))?;
-    Some(LlmProxy::new("deepseek", base_url, api_key))
+/// Build LlmProxy from DeepSeek API key. Returns None if key is not provided.
+pub fn from_env(deepseek_key: Option<&str>) -> Option<LlmProxy> {
+    let api_key = deepseek_key?;
+    Some(LlmProxy::new(
+        "deepseek",
+        "https://api.deepseek.com".to_string(),
+        api_key.to_string(),
+    ))
 }

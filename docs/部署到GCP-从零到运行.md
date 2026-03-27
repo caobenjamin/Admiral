@@ -166,7 +166,7 @@ ADMIRAL_BILI_APP_ID=YOUR_BILIBILI_APP_ID
 ADMIRAL_BILI_APP_SECRET=REDACTED_SECRET
 ADMIRAL_BILI_CALLBACK_URL=https://admiral.example.com/api/v1/oauth/bilibili/callback
 
-# LLM（至少填一个，例如 DeepSeek）
+# LLM（当前仅支持 DeepSeek）
 ADMIRAL_DEEPSEEK_API_KEY=REDACTED_SECRET
 
 # 服务与日志（用 Nginx 反代时建议只监听本机，不暴露 8080）

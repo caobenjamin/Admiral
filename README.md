@@ -38,7 +38,7 @@ admiral/
 - **认证**：JWT RS256（PEM 文件）、密码 argon2 哈希；邀请码一次性使用（`used_count` 校验与递增）。
 - **OAuth Token**：AES-256-GCM 加密落库，按用户多 Token 支持；后台每 10 小时刷新 B 站 token。
 - **MAPI**：按请求体中的 `account_id` + 当前用户查绑定表取 token，注入 `Authorization` 后转发到 B 站 `https://cm.bilibili.com/takumi/api/{path}`。
-- **LLM**：单默认厂商（deepseek / doubao / chatgpt / gemini），从环境变量读 API Key，转发到对应 OpenAI 兼容或厂商 API，支持流式与非流式。
+- **LLM**：当前仅支持 DeepSeek（deepseek-chat），从环境变量 `ADMIRAL_DEEPSEEK_API_KEY` 读取 API Key，转发到 DeepSeek OpenAI 兼容 API，支持流式与非流式。
 
 ### 服务端模块结构
 
@@ -49,27 +49,31 @@ crates/admiral-server/
 │   ├── main.rs             # 启动：配置、tracing、DB、迁移、JWT/OAuth/LLM 状态、路由、OAuth 刷新任务
 │   ├── config.rs           # 配置加载与 env 敏感项
 │   ├── error.rs            # AppError 与 HTTP 错误体
-│   ├── state.rs            # AppState（db, jwt, oauth, llm, config）
-│   ├── migration/          # SeaORM 迁移（用户/邀请/权益/设备 → oauth_tokens → ad_account_bindings）
-│   ├── entities/           # SeaORM 实体（user, invite, entitlement, device, oauth_token, ad_account_binding）
+│   ├── state.rs            # AppState（db, jwt, oauth, llm, http, config）
+│   ├── utils.rs            # 通用工具：UTF-8 安全截断、日志预览、DB 截断
+│   ├── migration/          # SeaORM 迁移（用户/邀请/权益/设备 → oauth_tokens → ad_account_bindings → knowledge_chunks）
+│   ├── entities/           # SeaORM 实体（user, invite, entitlement, device, oauth_token, oauth_subject, ad_account_binding）
 │   ├── api/                # HTTP 路由层
 │   │   ├── router.rs       # 路由汇总
 │   │   ├── auth.rs         # 注册 / 登录 / 刷新 / me / license
-│   │   ├── oauth.rs        # B 站 OAuth：initiate / callback / status / accounts / bind-accounts / delete session
+│   │   ├── oauth.rs        # B 站 OAuth：initiate / callback / status / subjects / accounts / bind-accounts / delete session
 │   │   ├── mapi.rs         # MAPI 代理
 │   │   ├── llm.rs          # LLM 聊天代理
-│   │   └── admin.rs        # 管理员：邀请码创建与列表、用户权益延期
+│   │   ├── knowledge.rs    # 知识库查询
+│   │   └── admin.rs        # 管理员：邀请码、用户权益延期、知识库 ingest
 │   ├── service/            # 业务逻辑
 │   │   ├── auth_service.rs
 │   │   ├── oauth_service.rs # 含 list_advertisers、bind_accounts、get_access_token_for_account、refresh 周期
 │   │   ├── token_vault.rs  # Token 加密存储与按用户/过期列表
 │   │   ├── mapi_proxy.rs
-│   │   └── llm_router.rs
+│   │   ├── llm_router.rs
+│   │   ├── knowledge_service.rs # Knowledge RAG：Markdown ingest 与全文检索
+│   │   └── log_service.rs  # 外部请求日志落表
 │   ├── infra/              # 基础设施
 │   │   ├── db.rs           # SeaORM 连接池
 │   │   ├── jwt.rs          # RS256 签发与校验
 │   │   └── crypto.rs       # AES-256-GCM
-│   └── middleware/         # request_id、logging、auth_guard（JWT 提取器）
+│   └── middleware/         # request_id、logging、auth_guard（JWT 提取器）、request_log
 ```
 
 ### API 列表
@@ -85,14 +89,19 @@ crates/admiral-server/
 | POST | `/api/v1/oauth/bilibili/initiate` | 获取 B 站授权跳转 URL | JWT |
 | GET | `/api/v1/oauth/bilibili/callback` | B 站 OAuth 回调（常驻） | 否 |
 | GET | `/api/v1/oauth/bilibili/status` | 当前用户各次授权列表 | JWT |
+| GET | `/api/v1/oauth/bilibili/subjects` | 当前授权可选的 subject 列表 | JWT |
+| GET | `/api/v1/oauth/bilibili/bindings` | 已绑定的广告账户列表 | JWT |
 | GET | `/api/v1/oauth/bilibili/accounts` | 可绑定广告账户列表（可选 `?oauth_session_id=`） | JWT |
-| POST | `/api/v1/oauth/bilibili/bind-accounts` | 提交绑定（body: oauth_token_id, account_ids） | JWT |
+| POST | `/api/v1/oauth/bilibili/bind-accounts` | 提交绑定（body: oauth_token_id, subject_type, subject_id, account_ids） | JWT |
+| DELETE | `/api/v1/oauth/bilibili/bindings/:account_id` | 解绑某个广告账户 | JWT |
 | DELETE | `/api/v1/oauth/bilibili/sessions/:id` | 取消某次授权 | JWT |
 | POST | `/api/v1/mapi/proxy` | MAPI 代理（body: account_id, method, path, query?, body?） | JWT |
-| POST | `/api/v1/llm/chat` | 大模型对话（body: messages, stream?, model?, max_tokens?） | JWT |
+| POST | `/api/v1/llm/chat` | 大模型对话（body: messages, stream?, max_tokens?, tools?, tool_choice?） | JWT |
+| POST | `/api/v1/knowledge/query` | 知识库全文检索（body: query, top_k） | JWT |
 | GET | `/api/v1/admin/invites` | 邀请码列表 | JWT (admin) |
 | POST | `/api/v1/admin/invites` | 创建邀请码 | JWT (admin) |
 | POST | `/api/v1/admin/users/:id/extend` | 延长用户权益（body: days, reason?） | JWT (admin) |
+| POST | `/api/v1/admin/knowledge/ingest` | 知识库 ingest（body: dir?） | JWT (admin) |
 
 ### 环境变量
 
@@ -101,7 +110,7 @@ crates/admiral-server/
 - `ADMIRAL_DATABASE_URL`：PostgreSQL 连接串
 - `ADMIRAL_JWT_PRIVATE_KEY_PATH` / `ADMIRAL_JWT_PUBLIC_KEY_PATH`：RS256 密钥路径
 - OAuth 与 MAPI：`ADMIRAL_TOKEN_ENCRYPTION_KEY`（32 字节 hex）、`ADMIRAL_BILI_APP_ID`、`ADMIRAL_BILI_APP_SECRET`、`ADMIRAL_BILI_CALLBACK_URL`
-- LLM：`ADMIRAL_LLM_DEFAULT_PROVIDER`、对应厂商的 `ADMIRAL_*_API_KEY`
+- LLM：`ADMIRAL_DEEPSEEK_API_KEY`（当前仅支持 DeepSeek）
 
 **B 站 OAuth 说明**：回调地址必须为 HTTPS。本仓库采用「服务端在远端运行」的联调模式，服务端部署在具备 HTTPS 的远端服务器，详见 [服务器部署与 OAuth 联调](docs/服务器部署与OAuth联调.md)。
 
@@ -166,8 +175,8 @@ cargo run -p admiral-server
 - **记忆系统**：`~/.admiral/memory/` 下 USER_MEMORY.md、每日/任务记忆，SQLite FTS5 检索
 - **Skill 工具体系**：`skills/` 目录 skill.toml 解析，Registry/Validator/Executor，MAPI 类走服务端代理
 - **Agent Runtime**：Profile、Context 组装、ReAct 循环，LLM tool_call → Skill 执行 → 结果回传
-- **任务引擎**：状态机、DryRun/TestRun/生产执行、Scheduler（心跳），SQLite 持久化
-- **Knowledge RAG**：服务端 `/api/v1/knowledge/query` 与客户端调用（当前为桩，可扩展向量检索）
+- **任务引擎**：状态机、统一 `run(task, run_type)` 执行（DryRun/TestRun/Production），SQLite 持久化
+- **Knowledge RAG**：服务端 `/api/v1/knowledge/query` 全文检索 + 客户端调用，可扩展 pgvector
 - **前端**：任务列表/创建/详情、ConfirmActions 执行 DryRun/TestRun/生产，首页 Agent 对话接 `agent_chat`
 
 详细实现说明见 **[任务系统实现报告](docs/任务系统实现报告.md)**。
@@ -187,8 +196,8 @@ crates/admiral-client/
 │   ├── db/                 # SQLite 迁移与 models（tasks、task_runs、conversations、memory、logs）
 │   ├── agent/              # profile、memory、context、runtime（ReAct + tool_call）
 │   ├── skill/              # loader、registry、validator、executor
-│   ├── task/               # state_machine、executor、engine、scheduler
-│   └── ...
+│   ├── task/               # state_machine、executor、engine
+│   └── utils/
 ├── ui/                     # React 19 + TypeScript + Vite 6 + Tailwind 4
 │   ├── src/
 │   │   ├── App.tsx、router.tsx

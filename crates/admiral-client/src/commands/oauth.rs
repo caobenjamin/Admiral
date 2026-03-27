@@ -8,27 +8,21 @@ use admiral_types::api::{
     OAuthAccountsResponse, TokenMeta,
 };
 
-fn get_access_token(ctx: &AuthContext) -> Result<String, ApiError> {
-    let cred = ctx.store.get().map_err(|e| ApiError::Credential(e.to_string()))?;
-    cred.ok_or(ApiError::Unauthorized)
-        .map(|c| c.access_token)
-}
-
 /// Get B站 authorization URL; frontend opens it in browser.
 pub async fn oauth_initiate(ctx: &AuthContext) -> Result<InitiateResponse, ApiError> {
-    let token = get_access_token(ctx)?;
+    let token = ctx.get_access_token()?;
     ctx.api_client.oauth_initiate(&token).await
 }
 
 pub async fn oauth_status(ctx: &AuthContext) -> Result<Vec<TokenMeta>, ApiError> {
-    let token = get_access_token(ctx)?;
+    let token = ctx.get_access_token()?;
     ctx.api_client.oauth_status(&token).await
 }
 
 pub async fn oauth_bindings_list(
     ctx: &AuthContext,
 ) -> Result<Vec<BoundAccountRecord>, ApiError> {
-    let token = get_access_token(ctx)?;
+    let token = ctx.get_access_token()?;
     ctx.api_client.oauth_bindings_list(&token).await
 }
 
@@ -36,7 +30,7 @@ pub async fn oauth_subjects_list(
     ctx: &AuthContext,
     oauth_session_id: Option<uuid::Uuid>,
 ) -> Result<Vec<BiliSubjectRecord>, ApiError> {
-    let token = get_access_token(ctx)?;
+    let token = ctx.get_access_token()?;
     ctx.api_client
         .oauth_subjects_list(&token, oauth_session_id)
         .await
@@ -48,7 +42,7 @@ pub async fn oauth_accounts_list(
     subject_type: i32,
     subject_id: i32,
 ) -> Result<OAuthAccountsResponse, ApiError> {
-    let token = get_access_token(ctx)?;
+    let token = ctx.get_access_token()?;
     ctx.api_client
         .oauth_accounts_list(&token, oauth_session_id, subject_type, subject_id)
         .await
@@ -58,7 +52,7 @@ pub async fn oauth_bind_accounts(
     ctx: &AuthContext,
     req: BindAccountsRequest,
 ) -> Result<(), ApiError> {
-    let token = get_access_token(ctx)?;
+    let token = ctx.get_access_token()?;
     ctx.api_client.oauth_bind_accounts(&token, &req).await
 }
 
@@ -66,7 +60,7 @@ pub async fn oauth_delete_session(
     ctx: &AuthContext,
     session_id: uuid::Uuid,
 ) -> Result<(), ApiError> {
-    let token = get_access_token(ctx)?;
+    let token = ctx.get_access_token()?;
     ctx.api_client.oauth_delete_session(&token, session_id).await
 }
 
@@ -74,6 +68,6 @@ pub async fn oauth_unbind_account(
     ctx: &AuthContext,
     account_id: i64,
 ) -> Result<(), ApiError> {
-    let token = get_access_token(ctx)?;
+    let token = ctx.get_access_token()?;
     ctx.api_client.oauth_unbind_account(&token, account_id).await
 }

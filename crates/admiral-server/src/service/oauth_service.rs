@@ -113,30 +113,28 @@ pub struct BiliAdvertisersResponse {
 
 #[derive(Debug, Deserialize)]
 struct BiliSubjectItem {
-    pub subject_type: i32,
-    pub subject_id: i32,
+    subject_type: i32,
+    subject_id: i32,
 }
 
 #[derive(Debug, Deserialize)]
 struct BiliSubjectsResponse {
-    pub code: i32,
-    pub message: Option<String>,
-    pub data: Option<Vec<BiliSubjectItem>>,
+    code: i32,
+    message: Option<String>,
+    data: Option<Vec<BiliSubjectItem>>,
 }
 
 #[derive(Debug, Deserialize)]
 struct BiliUserinfoData {
-    pub bid: Option<i64>,
-    pub user_name: Option<String>,
+    bid: Option<i64>,
+    user_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct BiliUserinfoResponse {
-    #[allow(dead_code)]
-    pub code: i32,
-    #[allow(dead_code)]
-    pub message: Option<String>,
-    pub data: Option<BiliUserinfoData>,
+    code: i32,
+    message: Option<String>,
+    data: Option<BiliUserinfoData>,
 }
 
 impl OauthService {
@@ -792,8 +790,6 @@ impl OauthService {
         }
         Ok(())
     }
-
-    /// Refresh a single token (used by token_refresh_job and optionally before MAPI call).
 
     /// Run one full refresh cycle at startup: check all tokens (expiring within 365 days) and refresh those that need it.
     pub async fn run_refresh_cycle_full(&self) {

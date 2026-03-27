@@ -48,8 +48,6 @@ struct SkillRiskSection {
     #[serde(default)]
     requires_dry_run: bool,
     #[serde(default)]
-    requires_test_run: bool,
-    #[serde(default)]
     requires_user_confirm: bool,
     #[serde(default)]
     is_reversible: Option<bool>,
@@ -171,7 +169,6 @@ pub fn load_skill_from_dir(dir: &Path) -> anyhow::Result<SkillDefinition> {
         is_reversible,
         api,
         input,
-        output_description: None,
         llm_tool,
         prompt_md,
     })

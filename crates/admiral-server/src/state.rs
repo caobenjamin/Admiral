@@ -15,6 +15,7 @@ pub struct AppState {
     pub config: AppConfig,
     pub oauth: Option<Arc<OauthService>>,
     pub llm: Option<Arc<LlmProxy>>,
+    pub http: reqwest::Client,
 }
 
 impl AuthState for AppState {

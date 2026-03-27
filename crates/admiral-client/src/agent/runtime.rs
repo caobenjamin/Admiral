@@ -17,10 +17,8 @@ pub struct AgentResponse {
     pub session: Session,
 }
 
-/// Agent runtime: owns profile, memory, context assembler, and uses external API client + skill executor.
+/// Agent runtime: owns context assembler, and uses external API client + skill executor.
 pub struct AgentRuntime {
-    profile: crate::agent::profile::AgentProfile,
-    memory: MemoryStore,
     context: ContextAssembler,
     api_client: Arc<ApiClient>,
     skill_executor: Arc<crate::skill::executor::SkillExecutor>,
@@ -33,14 +31,12 @@ impl AgentRuntime {
     ) -> anyhow::Result<Self> {
         let profile = profile::load_profile();
         let memory = MemoryStore::new().map_err(|e| anyhow::anyhow!("memory: {}", e))?;
-        let context = ContextAssembler::new(profile.clone(), memory.clone(), skill_registry.clone());
+        let context = ContextAssembler::new(profile, memory, skill_registry.clone());
         let skill_executor = Arc::new(crate::skill::executor::SkillExecutor::new(
             skill_registry,
             api_client.clone(),
         ));
         Ok(Self {
-            profile,
-            memory,
             context,
             api_client,
             skill_executor,
@@ -104,7 +100,7 @@ impl AgentRuntime {
             let req = LlmChatRequest {
                 messages,
                 stream: false,
-                model: self.profile.default_model.clone(),
+                model: self.context.profile.default_model.clone(),
                 max_tokens: Some(4096),
                 tools,
                 tool_choice,

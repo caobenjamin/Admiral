@@ -15,34 +15,6 @@ use crate::state::AppState;
 
 const DB_BODY_MAX: usize = 65535;
 
-fn response_body_preview(bytes: &[u8], limit: usize) -> String {
-    if bytes.is_empty() {
-        return "(empty)".to_string();
-    }
-    match String::from_utf8(bytes.to_vec()) {
-        Ok(s) => {
-            if s.len() > limit {
-                format!(
-                    "{}... (truncated, {} chars)",
-                    crate::utils::truncate_utf8_at(&s, limit),
-                    s.len()
-                )
-            } else {
-                s
-            }
-        }
-        Err(_) => format!("<binary, {} bytes>", bytes.len()),
-    }
-}
-
-fn truncate_for_db(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        format!("{}... (truncated)", crate::utils::truncate_utf8_at(s, max))
-    }
-}
-
 pub async fn chat(
     State(state): State<AppState>,
     auth_user: crate::middleware::auth_guard::AuthUser,
@@ -70,7 +42,7 @@ pub async fn chat(
     }
     let body = serde_json::Value::Object(body_obj);
     let request_url = format!("{}/v1/chat/completions", llm.base_url);
-    let request_body_str = truncate_for_db(
+    let request_body_str = crate::utils::truncate_for_db(
         &serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string()),
         DB_BODY_MAX,
     );
@@ -120,7 +92,7 @@ pub async fn chat(
                 return Err(crate::error::AppError::Upstream(err_msg));
             }
         };
-        let response_body_db = truncate_for_db(&String::from_utf8_lossy(&bytes), DB_BODY_MAX);
+        let response_body_db = crate::utils::truncate_for_db(&String::from_utf8_lossy(&bytes), DB_BODY_MAX);
         if let Err(le) = crate::service::log_service::log_external_request(
             &state.db,
             "llm",
@@ -139,7 +111,7 @@ pub async fn chat(
         info!(
             response_status = status.as_u16(),
             response_stream = true,
-            response_body_preview = %response_body_preview(bytes.as_ref(), 512),
+            response_body_preview = %crate::utils::bytes_preview(bytes.as_ref(), 512),
             "response to client"
         );
         Ok(Response::builder()
@@ -150,7 +122,7 @@ pub async fn chat(
     } else {
         match llm.chat(&body).await {
             Ok(bytes) => {
-                let response_body_db = truncate_for_db(&String::from_utf8_lossy(&bytes), DB_BODY_MAX);
+                let response_body_db = crate::utils::truncate_for_db(&String::from_utf8_lossy(&bytes), DB_BODY_MAX);
                 if let Err(le) = crate::service::log_service::log_external_request(
                     &state.db,
                     "llm",
@@ -168,7 +140,7 @@ pub async fn chat(
                 }
                 info!(
                     response_status = 200u16,
-                    response_body = %response_body_preview(&bytes, 2048),
+                    response_body = %crate::utils::bytes_preview(&bytes, 2048),
                     "response to client"
                 );
                 Ok(Response::builder()

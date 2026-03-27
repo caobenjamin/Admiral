@@ -32,16 +32,6 @@ pub struct AuthConfig {
     pub login_lockout_seconds: u64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct BilibiliOAuthConfig {
-    #[serde(default)]
-    pub app_id: String,
-    #[serde(default)]
-    pub app_secret: String,
-    #[serde(default)]
-    pub callback_url: String,
-}
-
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct OAuthConfig {
     #[serde(default = "default_state_cache_ttl")]
@@ -80,7 +70,6 @@ pub struct AppConfig {
     pub server: ServerConfig,
     pub database: DatabaseConfig,
     pub auth: AuthConfig,
-    pub bilibili: BilibiliOAuthConfig,
     #[serde(default)]
     pub oauth: OAuthConfig,
     pub llm: LlmConfig,
@@ -97,11 +86,7 @@ pub struct EnvSecrets {
     pub bilibili_app_id: String,
     pub bilibili_app_secret: String,
     pub bilibili_callback_url: String,
-    pub llm_default_provider: Option<String>,
     pub deepseek_api_key: Option<String>,
-    pub doubao_api_key: Option<String>,
-    pub openai_api_key: Option<String>,
-    pub gemini_api_key: Option<String>,
 }
 
 impl EnvSecrets {
@@ -120,11 +105,7 @@ impl EnvSecrets {
         let bilibili_app_secret = std::env::var("ADMIRAL_BILI_APP_SECRET").unwrap_or_default();
         let bilibili_callback_url =
             std::env::var("ADMIRAL_BILI_CALLBACK_URL").unwrap_or_default();
-        let llm_default_provider = std::env::var("ADMIRAL_LLM_DEFAULT_PROVIDER").ok();
         let deepseek_api_key = std::env::var("ADMIRAL_DEEPSEEK_API_KEY").ok();
-        let doubao_api_key = std::env::var("ADMIRAL_DOUBAO_API_KEY").ok();
-        let openai_api_key = std::env::var("ADMIRAL_OPENAI_API_KEY").ok();
-        let gemini_api_key = std::env::var("ADMIRAL_GEMINI_API_KEY").ok();
 
         Ok(Self {
             database_url,
@@ -134,11 +115,7 @@ impl EnvSecrets {
             bilibili_app_id,
             bilibili_app_secret,
             bilibili_callback_url,
-            llm_default_provider,
             deepseek_api_key,
-            doubao_api_key,
-            openai_api_key,
-            gemini_api_key,
         })
     }
 }

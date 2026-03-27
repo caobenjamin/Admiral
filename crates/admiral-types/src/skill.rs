@@ -78,9 +78,6 @@ pub struct SkillDefinition {
     #[serde(default)]
     pub input: Option<SkillInputDef>,
     #[serde(default)]
-    pub output_description: Option<String>,
-
-    #[serde(default)]
     pub llm_tool: Option<SkillLlmTool>,
 
     /// Path to optional prompt.md content (loaded separately).

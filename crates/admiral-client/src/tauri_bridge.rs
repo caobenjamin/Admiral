@@ -232,10 +232,11 @@ pub async fn task_run_dry_run(
     task_id: String,
 ) -> Result<admiral_types::task::TaskRun, String> {
     let id = Uuid::parse_str(&task_id).map_err(|e| e.to_string())?;
-    crate::commands::task::run_dry_run(
+    crate::commands::task::run_task(
         state.task_engine.as_ref(),
         state.auth.as_ref(),
         id,
+        admiral_types::task::RunType::DryRun,
     )
     .await
 }
@@ -246,10 +247,11 @@ pub async fn task_run_test_run(
     task_id: String,
 ) -> Result<admiral_types::task::TaskRun, String> {
     let id = Uuid::parse_str(&task_id).map_err(|e| e.to_string())?;
-    crate::commands::task::run_test_run(
+    crate::commands::task::run_task(
         state.task_engine.as_ref(),
         state.auth.as_ref(),
         id,
+        admiral_types::task::RunType::TestRun,
     )
     .await
 }
@@ -266,7 +268,7 @@ pub async fn agent_chat(
         task_id: task_id.and_then(|s| uuid::Uuid::parse_str(&s).ok()),
         messages: Vec::new(),
     };
-    let guard = state.agent_runtime.write().await;
+    let guard = state.agent_runtime.read().await;
     let runtime = guard.as_ref().ok_or("Agent not initialized")?;
     runtime
         .process_message(session, &message, Some(&token))
@@ -280,10 +282,11 @@ pub async fn task_run_production(
     task_id: String,
 ) -> Result<admiral_types::task::TaskRun, String> {
     let id = Uuid::parse_str(&task_id).map_err(|e| e.to_string())?;
-    crate::commands::task::run_production(
+    crate::commands::task::run_task(
         state.task_engine.as_ref(),
         state.auth.as_ref(),
         id,
+        admiral_types::task::RunType::Production,
     )
     .await
 }

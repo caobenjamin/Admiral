@@ -83,22 +83,10 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    // 联调阶段仅 DeepSeek：仅当配置了 ADMIRAL_DEEPSEEK_API_KEY 时启用 LLM，忽略其他厂商
-    let llm = secrets
-        .deepseek_api_key
-        .as_deref()
-        .and_then(|_| {
-            admiral_server::service::llm_router::from_env(
-                "deepseek",
-                secrets.deepseek_api_key.as_deref(),
-                None,
-                None,
-                None,
-                None,
-                None,
-            )
-        });
-    let llm = llm.map(Arc::new);
+    let llm = admiral_server::service::llm_router::from_env(
+        secrets.deepseek_api_key.as_deref(),
+    )
+    .map(Arc::new);
 
     let state = AppState {
         db,
@@ -106,6 +94,7 @@ async fn main() -> anyhow::Result<()> {
         config: app_config.clone(),
         oauth,
         llm,
+        http: reqwest::Client::new(),
     };
 
     let app = admiral_server::api::router::app(state)

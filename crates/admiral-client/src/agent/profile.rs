@@ -37,28 +37,13 @@ pub fn load_profile() -> AgentProfile {
 }
 
 fn default_profile() -> AgentProfile {
-    AgentProfile {
+    let mut profile = AgentProfile {
         name: "Admiral".to_string(),
         version: "1.0.0".to_string(),
         role: "资深广告优化师助手".to_string(),
         tone: "专业、简洁、主动确认".to_string(),
         language: "zh-CN".to_string(),
-        system_prompt: build_system_prompt(&AgentProfile {
-            name: "Admiral".to_string(),
-            version: "1.0.0".to_string(),
-            role: "资深广告优化师助手".to_string(),
-            tone: "专业、简洁、主动确认".to_string(),
-            language: "zh-CN".to_string(),
-            system_prompt: String::new(),
-            must_dry_run: true,
-            must_test_run_before_deploy: true,
-            max_batch_size: 100,
-            require_user_confirm_for_write: true,
-            default_model: None,
-            planning_model: None,
-            execution_model: None,
-            temperature: Some(0.1),
-        }),
+        system_prompt: String::new(),
         must_dry_run: true,
         must_test_run_before_deploy: true,
         max_batch_size: 100,
@@ -67,7 +52,9 @@ fn default_profile() -> AgentProfile {
         planning_model: None,
         execution_model: None,
         temperature: Some(0.1),
-    }
+    };
+    profile.system_prompt = build_system_prompt(&profile);
+    profile
 }
 
 #[derive(serde::Deserialize)]

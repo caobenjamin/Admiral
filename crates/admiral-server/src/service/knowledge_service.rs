@@ -2,12 +2,12 @@
 
 use crate::error::Result;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::fs;
 use std::path::Path;
 use uuid::Uuid;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct KnowledgeSnippet {
     pub content: String,
     pub source_file: String,
@@ -21,12 +21,10 @@ pub async fn query(
     query_text: &str,
     top_k: usize,
 ) -> Result<Vec<KnowledgeSnippet>> {
-    let top_k = top_k.min(20).max(1);
+    let top_k = top_k.clamp(1, 20);
     if query_text.trim().is_empty() {
         return Ok(Vec::new());
     }
-    // Escape single quotes in query for plainto_tsquery (safe: we only pass one param).
-    let q = query_text.replace('\'', "''");
     let sql = format!(
         r#"SELECT content, source_file, title FROM knowledge_chunks
            WHERE to_tsvector('simple', content) @@ plainto_tsquery('simple', $1)
@@ -37,7 +35,7 @@ pub async fn query(
     let stmt = Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         &sql,
-        [sea_orm::Value::String(Some(Box::new(q)))],
+        [sea_orm::Value::String(Some(Box::new(query_text.to_string())))],
     );
     let rows = db.query_all(stmt).await?;
     let mut out = Vec::with_capacity(rows.len());
@@ -114,7 +112,7 @@ fn collect_md_files(dir: &Path) -> std::io::Result<Vec<(String, std::path::PathB
         let path = entry.path();
         if path.is_dir() {
             out.extend(collect_md_files(&path)?);
-        } else if path.extension().map_or(false, |e| e == "md") {
+        } else if path.extension().is_some_and(|e| e == "md") {
             let rel = path.strip_prefix(dir).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| path.file_name().unwrap_or_default().to_string_lossy().to_string());
             out.push((rel, path));
         }
