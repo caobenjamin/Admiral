@@ -8,14 +8,16 @@ node_modules/
 dist/
 .vite/
 
-# Environment
+# Environment & Credentials
 .env
 .env.local
 .env.*.local
+credentials.json
 
 # IDE
 .idea/
 .vscode/
+.cursor/plans/
 *.swp
 *.swo
 *~
@@ -34,3 +36,4 @@ logs/
 *.dll
 *.so
 *.dylib
+tsconfig.tsbuildinfo
