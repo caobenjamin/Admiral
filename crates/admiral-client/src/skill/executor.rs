@@ -1,15 +1,26 @@
-//! Skill executor: dispatches to local or remote (MAPI via server) execution.
+//! Skill executor: dispatches to local or remote (MAPI via server) execution,
+//! with per-account rate limiting for MAPI calls.
+
+use std::num::NonZeroU32;
+use std::sync::Arc;
+use std::time::Instant;
+
+use dashmap::DashMap;
+use governor::{Quota, RateLimiter as GovLimiter, clock::DefaultClock, state::{InMemoryState, NotKeyed}};
 
 use admiral_types::api::MapiProxyRequest;
 use admiral_types::skill::{SkillCall, SkillDefinition, SkillResult};
 use crate::network::api_client::ApiClient;
 use crate::skill::validator;
-use std::sync::Arc;
-use std::time::Instant;
+
+type MapiLimiter = GovLimiter<NotKeyed, InMemoryState, DefaultClock>;
 
 pub struct SkillExecutor {
     registry: Arc<crate::skill::registry::SkillRegistry>,
     api_client: Arc<ApiClient>,
+    /// Per-account rate limiters for MAPI calls (default: 10 requests/second).
+    mapi_limiters: DashMap<i64, Arc<MapiLimiter>>,
+    mapi_rps: u32,
 }
 
 impl SkillExecutor {
@@ -20,7 +31,20 @@ impl SkillExecutor {
         Self {
             registry,
             api_client,
+            mapi_limiters: DashMap::new(),
+            mapi_rps: 10,
         }
+    }
+
+    fn get_limiter(&self, account_id: i64) -> Arc<MapiLimiter> {
+        self.mapi_limiters
+            .entry(account_id)
+            .or_insert_with(|| {
+                let quota = Quota::per_second(NonZeroU32::new(self.mapi_rps).unwrap());
+                Arc::new(GovLimiter::direct(quota))
+            })
+            .value()
+            .clone()
     }
 
     /// Execute a skill call. For MAPI skills, access_token must be Some.
@@ -38,7 +62,6 @@ impl SkillExecutor {
 
         let start = Instant::now();
 
-        // 账户列表固定走本地绑定表，不进入 MAPI，避免 account_id required for MAPI 导致重复确认/卡住
         let result = if skill.id == "bili.account.list" {
             let token = access_token
                 .ok_or_else(|| anyhow::anyhow!("account list requires access_token"))?;
@@ -84,6 +107,10 @@ impl SkillExecutor {
             .or_else(|| call.params.get("account_id").and_then(|v| v.as_i64()))
             .ok_or_else(|| anyhow::anyhow!("account_id required for MAPI"))?;
 
+        // Rate limiting: wait for permit before making the call
+        let limiter = self.get_limiter(account_id);
+        limiter.until_ready().await;
+
         let (query, body) = if api.method.eq_ignore_ascii_case("GET") {
             (Some(call.params.clone()), None)
         } else {
@@ -126,7 +153,6 @@ impl SkillExecutor {
         ))
     }
 
-    /// 本地已绑定账户列表：调用服务端 bindings 接口，不经过 MAPI。
     async fn execute_bili_account_list_local(
         &self,
         access_token: &str,

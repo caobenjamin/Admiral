@@ -42,6 +42,10 @@ toml = "0.8"
 # Cron scheduler
 tokio-cron-scheduler = "0.11"
 
+# Rate limiting for MAPI calls
+governor = "0.8"
+dashmap = "6"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

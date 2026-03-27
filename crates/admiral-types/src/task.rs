@@ -1,5 +1,7 @@
 //! Task, TaskRun, TaskPlan, TaskStep and related types.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -56,7 +58,67 @@ pub struct TaskTrigger {
     pub next_run_at: Option<DateTime<Utc>>,
 }
 
-/// A single step in a task plan (skill_id + params + dependencies).
+/// Retry policy for a step (exponential backoff).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RetryPolicy {
+    #[serde(default = "RetryPolicy::default_max_retries")]
+    pub max_retries: u32,
+    #[serde(default = "RetryPolicy::default_backoff_ms")]
+    pub backoff_ms: u64,
+    #[serde(default = "RetryPolicy::default_backoff_multiplier")]
+    pub backoff_multiplier: f32,
+}
+
+impl RetryPolicy {
+    fn default_max_retries() -> u32 { 3 }
+    fn default_backoff_ms() -> u64 { 1000 }
+    fn default_backoff_multiplier() -> f32 { 2.0 }
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_retries: Self::default_max_retries(),
+            backoff_ms: Self::default_backoff_ms(),
+            backoff_multiplier: Self::default_backoff_multiplier(),
+        }
+    }
+}
+
+/// Execution mode for a step: single execution or iterating over a list.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum StepMode {
+    Single,
+    ForEach {
+        /// JSONPath reference to a list in step context, e.g. "$.step_1.records"
+        source: String,
+        /// Variable name for the current item, e.g. "current_account"
+        item_binding: String,
+        /// Max concurrent executions (0 = unlimited)
+        #[serde(default = "StepMode::default_concurrency")]
+        max_concurrency: u32,
+    },
+}
+
+impl StepMode {
+    fn default_concurrency() -> u32 { 5 }
+}
+
+impl Default for StepMode {
+    fn default() -> Self { Self::Single }
+}
+
+/// Action to take when a step condition evaluates to false.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StepActionOnFalse {
+    #[default]
+    Skip,
+    Fail,
+}
+
+/// A single step in a task plan (skill_id + params + dependencies + data flow).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TaskStep {
     pub seq: u32,
@@ -66,6 +128,30 @@ pub struct TaskStep {
     pub depends_on: Vec<u32>,
     #[serde(default)]
     pub description: Option<String>,
+
+    /// Store this step's output into context under this key (e.g. "account_list").
+    #[serde(default)]
+    pub output_key: Option<String>,
+    /// Inject values from context into params before execution.
+    /// Key = param field name, Value = JSONPath expression (e.g. "$.step_1.records[0].account_id").
+    #[serde(default)]
+    pub param_bindings: HashMap<String, String>,
+
+    /// Execution mode: single or iterate over a list.
+    #[serde(default)]
+    pub mode: StepMode,
+
+    /// Condition expression evaluated against step context; step runs only when true.
+    /// Supports simple comparisons: "$.step_2.total > 1000", "$.step_1.count == 0".
+    #[serde(default)]
+    pub condition: Option<String>,
+    /// What to do when condition is false.
+    #[serde(default)]
+    pub on_condition_false: StepActionOnFalse,
+
+    /// Optional retry policy for transient failures.
+    #[serde(default)]
+    pub retry_policy: Option<RetryPolicy>,
 }
 
 /// Full execution plan (ordered steps + metadata).
@@ -162,6 +248,19 @@ pub struct PendingApproval {
     pub skill_id: String,
     pub operation: String,
     pub params_summary: String,
+}
+
+// --------------- Task Progress Events ---------------
+
+/// Real-time progress events emitted during task execution.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum TaskProgress {
+    StepStarted { step_seq: u32, total_steps: u32 },
+    StepCompleted { step_seq: u32, success: bool },
+    StepSkipped { step_seq: u32, reason: String },
+    BatchProgress { step_seq: u32, completed: u32, total: u32 },
+    TaskCompleted { status: RunStatus },
 }
 
 // --------------- Operation Permissions ---------------

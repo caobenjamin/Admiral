@@ -301,6 +301,7 @@ impl ApiClient {
         let resp = self
             .client
             .post(&url)
+            .timeout(Duration::from_secs(120))
             .header("Authorization", format!("Bearer {}", access_token))
             .header("Content-Type", "application/json")
             .json(&body)

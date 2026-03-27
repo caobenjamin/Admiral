@@ -68,11 +68,11 @@ impl ContextAssembler {
         }
     }
 
-    /// Build the messages array for the LLM API (system content is merged into first user message or a system message).
+    /// Build the messages array for the LLM API.
+    /// The current user message should already be in `session.messages`.
     pub fn build(
         &self,
         session: &Session,
-        user_message: &str,
         knowledge_snippets: &[String],
     ) -> serde_json::Value {
         let mut system_parts = vec![self.profile.system_prompt.clone()];
@@ -104,10 +104,9 @@ impl ContextAssembler {
             );
         }
 
-        let tools = self.skill_registry.build_llm_tools();
-        if !tools.is_empty() {
+        if !self.skill_registry.build_llm_tools().is_empty() {
             system_parts.push(
-                "## Available Tools\n\nYou may call these functions when needed. Use the exact function names."
+                "## Available Tools\n\nYou have tools available. Call them by exact function name when needed."
                     .to_string(),
             );
         }
@@ -121,13 +120,6 @@ impl ContextAssembler {
             "content": system_content
         }));
 
-        if !tools.is_empty() {
-            messages.push(json!({
-                "role": "system",
-                "content": serde_json::to_string(&tools).unwrap_or_default()
-            }));
-        }
-
         let history_start = session
             .messages
             .len()
@@ -135,11 +127,6 @@ impl ContextAssembler {
         for msg in session.messages[history_start..].iter() {
             messages.push(msg.to_openai_value());
         }
-
-        messages.push(json!({
-            "role": "user",
-            "content": user_message
-        }));
 
         json!(messages)
     }

@@ -117,7 +117,6 @@ impl AgentRuntime {
 
             let messages = self.context.build(
                 &current_session,
-                user_message,
                 &knowledge_snippets,
             );
 
@@ -232,6 +231,67 @@ impl AgentRuntime {
     }
 }
 
+/// Process complete lines from the SSE buffer, emitting deltas and accumulating tool_calls.
+async fn process_sse_buffer(
+    buffer: &mut String,
+    content: &mut String,
+    tool_calls_map: &mut HashMap<u64, (String, String, String)>,
+    tx: &mpsc::Sender<StreamEvent>,
+) {
+    while let Some(pos) = buffer.find('\n') {
+        let line = buffer[..pos].to_string();
+        *buffer = buffer[pos + 1..].to_string();
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with(':') {
+            continue;
+        }
+        if trimmed == "data: [DONE]" {
+            continue;
+        }
+
+        let data = match trimmed.strip_prefix("data: ") {
+            Some(d) => d,
+            None => continue,
+        };
+
+        let json: Value = match serde_json::from_str(data) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let delta = match json.pointer("/choices/0/delta") {
+            Some(d) => d,
+            None => continue,
+        };
+
+        if let Some(c) = delta.get("content").and_then(|v| v.as_str()) {
+            if !c.is_empty() {
+                content.push_str(c);
+                let _ = tx.send(StreamEvent::Delta { content: c.to_string() }).await;
+            }
+        }
+
+        if let Some(tcs) = delta.get("tool_calls").and_then(|v| v.as_array()) {
+            for tc in tcs {
+                let index = tc.get("index").and_then(|v| v.as_u64()).unwrap_or(0);
+                let entry = tool_calls_map.entry(index).or_insert_with(|| (String::new(), String::new(), String::new()));
+                if let Some(id) = tc.get("id").and_then(|v| v.as_str()) {
+                    entry.0 = id.to_string();
+                }
+                if let Some(func) = tc.get("function") {
+                    if let Some(name) = func.get("name").and_then(|v| v.as_str()) {
+                        entry.1 = name.to_string();
+                    }
+                    if let Some(args) = func.get("arguments").and_then(|v| v.as_str()) {
+                        entry.2.push_str(args);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Parse an SSE stream from the LLM, emitting content deltas and accumulating tool_calls.
 /// Returns (full_content, tool_calls_json_value).
 async fn parse_sse_stream(
@@ -247,58 +307,12 @@ async fn parse_sse_stream(
         let chunk = chunk_result.map_err(|e| anyhow::anyhow!("stream read: {}", e))?;
         buffer.push_str(&String::from_utf8_lossy(&chunk));
 
-        while let Some(pos) = buffer.find('\n') {
-            let line = buffer[..pos].to_string();
-            buffer = buffer[pos + 1..].to_string();
+        process_sse_buffer(&mut buffer, &mut content, &mut tool_calls_map, tx).await;
+    }
 
-            let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with(':') {
-                continue;
-            }
-            if trimmed == "data: [DONE]" {
-                continue;
-            }
-
-            let data = match trimmed.strip_prefix("data: ") {
-                Some(d) => d,
-                None => continue,
-            };
-
-            let json: Value = match serde_json::from_str(data) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-
-            let delta = match json.pointer("/choices/0/delta") {
-                Some(d) => d,
-                None => continue,
-            };
-
-            if let Some(c) = delta.get("content").and_then(|v| v.as_str()) {
-                if !c.is_empty() {
-                    content.push_str(c);
-                    let _ = tx.send(StreamEvent::Delta { content: c.to_string() }).await;
-                }
-            }
-
-            if let Some(tcs) = delta.get("tool_calls").and_then(|v| v.as_array()) {
-                for tc in tcs {
-                    let index = tc.get("index").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let entry = tool_calls_map.entry(index).or_insert_with(|| (String::new(), String::new(), String::new()));
-                    if let Some(id) = tc.get("id").and_then(|v| v.as_str()) {
-                        entry.0 = id.to_string();
-                    }
-                    if let Some(func) = tc.get("function") {
-                        if let Some(name) = func.get("name").and_then(|v| v.as_str()) {
-                            entry.1 = name.to_string();
-                        }
-                        if let Some(args) = func.get("arguments").and_then(|v| v.as_str()) {
-                            entry.2.push_str(args);
-                        }
-                    }
-                }
-            }
-        }
+    if !buffer.trim().is_empty() {
+        buffer.push('\n');
+        process_sse_buffer(&mut buffer, &mut content, &mut tool_calls_map, tx).await;
     }
 
     let tool_calls_value = if tool_calls_map.is_empty() {

@@ -147,6 +147,18 @@ pub fn list_heartbeat_tasks(conn: &rusqlite::Connection) -> anyhow::Result<Vec<T
     Ok(out)
 }
 
+/// List tasks that are cron type and scheduled (for cron scheduler).
+pub fn list_cron_tasks(conn: &rusqlite::Connection) -> anyhow::Result<Vec<Task>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, description, task_type, status, plan, platform, account_ids, trigger_type, cron_expression, heartbeat_condition, next_run_at, created_at, updated_at, task_category FROM tasks WHERE task_type = 'cron' AND status = 'scheduled'",
+    )?;
+    let out: Vec<Task> = stmt
+        .query_map([], row_to_task)?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(out)
+}
+
 fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
     let id: String = row.get(0)?;
     let name: String = row.get(1)?;

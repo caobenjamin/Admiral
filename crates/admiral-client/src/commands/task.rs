@@ -4,10 +4,11 @@ use crate::commands::auth::AuthContext;
 use crate::db;
 use crate::task::engine::TaskEngine;
 use admiral_types::task::{
-    Task, TaskCategory, TaskStatus, TaskType, RunType,
+    Task, TaskCategory, TaskStatus, TaskType, RunType, TaskProgress,
     OperationPermission, PendingApproval, PermissionScope,
 };
 use chrono::Utc;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 pub fn create_task(
@@ -44,6 +45,7 @@ pub async fn run_task(
     auth: &AuthContext,
     task_id: Uuid,
     run_type: RunType,
+    progress_tx: Option<mpsc::Sender<TaskProgress>>,
 ) -> Result<admiral_types::task::TaskRun, String> {
     let token = auth.get_access_token().map_err(|e| e.to_string())?;
     let mut task = engine
@@ -51,7 +53,7 @@ pub async fn run_task(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "task not found".to_string())?;
     engine
-        .run(&mut task, run_type, Some(&token))
+        .run(&mut task, run_type, Some(&token), progress_tx)
         .await
         .map_err(|e| e.to_string())
 }
@@ -63,6 +65,7 @@ pub async fn resume_task(
     task_id: Uuid,
     from_step: Option<u32>,
     run_type: RunType,
+    progress_tx: Option<mpsc::Sender<TaskProgress>>,
 ) -> Result<admiral_types::task::TaskRun, String> {
     let token = auth.get_access_token().map_err(|e| e.to_string())?;
     let mut task = engine
@@ -70,7 +73,7 @@ pub async fn resume_task(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "task not found".to_string())?;
     engine
-        .resume_run(&mut task, from_step, run_type, Some(&token))
+        .resume_run(&mut task, from_step, run_type, Some(&token), progress_tx)
         .await
         .map_err(|e| e.to_string())
 }
@@ -109,11 +112,10 @@ pub async fn approve_operation(
 
     db::models::clear_pending_approvals(&conn, task_id).map_err(|e| e.to_string())?;
 
-    // Resume execution from the step that was waiting
-    resume_task(engine, auth, task_id, Some(pending.step_seq), RunType::Production).await
+    resume_task(engine, auth, task_id, Some(pending.step_seq), RunType::Production, None).await
 }
 
-/// Reject a pending operation → cancel the task.
+/// Reject a pending operation -> cancel the task.
 pub fn reject_operation(engine: &TaskEngine, task_id: Uuid) -> Result<Task, String> {
     let db_path = db::models::db_path();
     let conn = db::models::open_rw(&db_path).map_err(|e| e.to_string())?;
