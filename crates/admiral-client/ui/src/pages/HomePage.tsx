@@ -1,32 +1,31 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { useAuth } from "@/hooks/useAuth";
 import { useAgent } from "@/hooks/useAgent";
+import { useUiStore } from "@/stores/uiStore";
+import { useTaskStore } from "@/stores/taskStore";
 import { TaskDetail } from "@/components/task/TaskDetail";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageBubble, type ChatMessage } from "@/components/chat/MessageBubble";
+import * as tauri from "@/lib/tauri";
 
 function sessionMessagesToChatMessages(
   sessionMessages: { role: string; content?: string | null; tool_calls?: unknown }[]
 ): ChatMessage[] {
-  return sessionMessages.map((m, i) => {
-    let content = m.content ?? "";
-    if (m.role === "assistant" && m.tool_calls && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
-      if (!content) content = "[调用工具]";
-    }
-
-    const role =
-      m.role === "user"
-        ? "user"
-        : m.role === "assistant"
-          ? "assistant"
-          : m.role === "system"
-            ? "system"
-            : "tool";
-
-    return { id: `msg-${i}`, role, content };
-  });
+  return sessionMessages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m, i) => {
+      let content = m.content ?? "";
+      if (m.role === "assistant" && m.tool_calls && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+        if (!content) content = "[调用工具]";
+      }
+      return {
+        id: `msg-${i}`,
+        role: m.role as "user" | "assistant",
+        content,
+      };
+    });
 }
 
 const QUICK_ACTIONS = ["查询今日投放概览", "继续执行当前任务", "导出本次结果摘要"];
@@ -34,10 +33,14 @@ const QUICK_ACTIONS = ["查询今日投放概览", "继续执行当前任务", "
 export function HomePage() {
   const user = useAuthStore((s) => s.user);
   const { loadUserAndLicense } = useAuth();
-  const { chat, loading, error } = useAgent(null);
+  const selectedTaskId = useUiStore((s) => s.selectedTaskId);
+  const { fetchTasks } = useTaskStore();
   const navigate = useNavigate();
+
+  const { chat, loading, error } = useAgent(selectedTaskId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [showTaskDetail, setShowTaskDetail] = useState(true);
+  const prevTaskIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     loadUserAndLicense().then((ok) => {
@@ -45,23 +48,52 @@ export function HomePage() {
     });
   }, [loadUserAndLicense, navigate]);
 
+  // Load conversation history when task changes
+  useEffect(() => {
+    if (selectedTaskId === prevTaskIdRef.current) return;
+    prevTaskIdRef.current = selectedTaskId;
+
+    if (!selectedTaskId) {
+      setMessages([]);
+      return;
+    }
+
+    tauri.taskLoadConversations(selectedTaskId).then((rows) => {
+      const chatMsgs: ChatMessage[] = rows
+        .filter((r) => r.role === "user" || r.role === "assistant")
+        .map((r, i) => ({
+          id: r.id || `hist-${i}`,
+          role: r.role as "user" | "assistant",
+          content: r.content || "[调用工具]",
+        }));
+      setMessages(chatMsgs);
+    }).catch(() => {
+      setMessages([]);
+    });
+  }, [selectedTaskId]);
+
   const handleSend = useCallback(
     async (content: string) => {
+      if (!selectedTaskId) return;
       const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", content };
       setMessages((prev) => [...prev, userMsg]);
       try {
         const response = await chat(content);
         const list = sessionMessagesToChatMessages(response.session.messages);
         setMessages(list);
+        // Refresh task list to pick up any status changes
+        fetchTasks();
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "请求失败，请重试。";
         setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: "assistant", content: errMsg }]);
       }
     },
-    [chat]
+    [chat, selectedTaskId, fetchTasks]
   );
 
   if (!user) return null;
+
+  const noTask = !selectedTaskId;
 
   return (
     <div
@@ -93,10 +125,10 @@ export function HomePage() {
             <div>
               <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: "var(--admiral-text-primary)" }}>Agent 对话</h3>
               <p style={{ fontSize: 12, color: "var(--admiral-text-secondary)", margin: "3px 0 0" }}>
-                摘要优先展示，工具结果可按需展开
+                {noTask ? "请先在左侧选择或创建任务" : "与 AI 对话管理当前任务"}
               </p>
             </div>
-            <span className="admiral-chip admiral-chip-primary">实时会话</span>
+            {selectedTaskId && <span className="admiral-chip admiral-chip-primary">实时会话</span>}
           </div>
 
           <div
@@ -110,7 +142,11 @@ export function HomePage() {
               padding: "10px 12px",
             }}
           >
-            {messages.length > 0 ? (
+            {noTask ? (
+              <p style={{ margin: "28px 0", fontSize: 13, color: "var(--admiral-text-placeholder)", textAlign: "center" }}>
+                请先选择或创建任务，对话将与任务绑定。
+              </p>
+            ) : messages.length > 0 ? (
               messages.map((m) => <MessageBubble key={m.id} message={m} />)
             ) : (
               <p style={{ margin: "28px 0", fontSize: 13, color: "var(--admiral-text-placeholder)", textAlign: "center" }}>
@@ -137,10 +173,10 @@ export function HomePage() {
       >
         <ChatInput
           onSend={handleSend}
-          placeholder="输入指令或描述任务..."
-          disabled={loading}
+          placeholder={noTask ? "请先选择任务..." : "输入指令或描述任务..."}
+          disabled={loading || noTask}
           loading={loading}
-          quickActions={QUICK_ACTIONS}
+          quickActions={noTask ? [] : QUICK_ACTIONS}
         />
       </div>
     </div>

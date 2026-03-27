@@ -153,6 +153,10 @@ export async function taskList(statusFilter?: TaskStatus | null): Promise<Task[]
   return invoke("task_list", { statusFilter: statusFilter ?? null });
 }
 
+export async function taskDelete(id: string): Promise<void> {
+  return invoke("task_delete", { id });
+}
+
 export async function taskGet(id: string): Promise<Task | null> {
   return invoke("task_get", { id });
 }
@@ -198,6 +202,22 @@ export async function permissionList(): Promise<OperationPermission[]> {
 
 export async function permissionRevoke(id: string): Promise<void> {
   return invoke("permission_revoke", { id });
+}
+
+export async function taskTransition(taskId: string, newStatus: TaskStatus): Promise<Task> {
+  return invoke("task_transition", { taskId, newStatus });
+}
+
+export interface ConversationMessage {
+  id: string;
+  role: string;
+  content: string;
+  tool_calls?: unknown;
+  timestamp: string;
+}
+
+export async function taskLoadConversations(taskId: string): Promise<ConversationMessage[]> {
+  return invoke("task_load_conversations", { taskId });
 }
 
 // ---------- Agent ----------

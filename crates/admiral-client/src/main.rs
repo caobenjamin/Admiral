@@ -36,6 +36,7 @@ fn main() {
             tauri_bridge::set_server_url,
             tauri_bridge::task_create,
             tauri_bridge::task_list,
+            tauri_bridge::task_delete,
             tauri_bridge::task_get,
             tauri_bridge::task_run_dry_run,
             tauri_bridge::task_run_test_run,
@@ -46,6 +47,8 @@ fn main() {
             tauri_bridge::task_get_pending_approval,
             tauri_bridge::permission_list,
             tauri_bridge::permission_revoke,
+            tauri_bridge::task_transition,
+            tauri_bridge::task_load_conversations,
             tauri_bridge::agent_chat,
         ])
         .run(tauri::generate_context!())

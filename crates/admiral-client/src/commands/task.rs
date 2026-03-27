@@ -31,6 +31,10 @@ pub fn list_tasks(
         .map_err(|e| e.to_string())
 }
 
+pub fn delete_task(engine: &TaskEngine, id: Uuid) -> Result<(), String> {
+    engine.delete_task(id).map_err(|e| e.to_string())
+}
+
 pub fn get_task(engine: &TaskEngine, id: Uuid) -> Result<Option<Task>, String> {
     engine.get_task(id).map_err(|e| e.to_string())
 }

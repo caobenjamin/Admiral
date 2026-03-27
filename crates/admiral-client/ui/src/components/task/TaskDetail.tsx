@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore, type TaskStatus } from "@/stores/taskStore";
 import { useTasks } from "@/hooks/useTasks";
 import { TaskTimeline } from "./TaskTimeline";
 import { Button } from "@/components/common/Button";
-import type { PendingApproval } from "@/lib/types";
+import type { PendingApproval, TaskCategory } from "@/lib/types";
+import * as tauri from "@/lib/tauri";
 
 function statusLabel(s: TaskStatus): string {
   const map: Record<string, string> = {
@@ -59,6 +60,54 @@ function formatDate(v: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** Available actions based on current status */
+function getAvailableActions(status: TaskStatus, taskType: string): { label: string; targetStatus: TaskStatus; variant: string }[] {
+  const actions: { label: string; targetStatus: TaskStatus; variant: string }[] = [];
+  switch (status) {
+    case "draft":
+      actions.push({ label: "开始规划", targetStatus: "planning", variant: "primary" });
+      break;
+    case "planning":
+      actions.push({ label: "完成规划", targetStatus: "plan_ready", variant: "primary" });
+      actions.push({ label: "退回草稿", targetStatus: "draft", variant: "secondary" });
+      break;
+    case "plan_ready":
+      if (taskType === "instant") {
+        actions.push({ label: "开始执行", targetStatus: "running", variant: "primary" });
+      } else {
+        actions.push({ label: "加入排期", targetStatus: "scheduled", variant: "primary" });
+        actions.push({ label: "立即执行", targetStatus: "running", variant: "secondary" });
+      }
+      actions.push({ label: "退回草稿", targetStatus: "draft", variant: "secondary" });
+      break;
+    case "scheduled":
+      actions.push({ label: "立即执行", targetStatus: "running", variant: "primary" });
+      actions.push({ label: "暂停", targetStatus: "paused", variant: "secondary" });
+      break;
+    case "running":
+      actions.push({ label: "暂停", targetStatus: "paused", variant: "secondary" });
+      break;
+    case "paused":
+      actions.push({ label: "继续执行", targetStatus: "running", variant: "primary" });
+      if (taskType !== "instant") {
+        actions.push({ label: "回到排期", targetStatus: "scheduled", variant: "secondary" });
+      }
+      break;
+    case "failed":
+      actions.push({ label: "重试", targetStatus: "plan_ready", variant: "primary" });
+      break;
+    case "cancelled":
+      actions.push({ label: "重新编辑", targetStatus: "draft", variant: "secondary" });
+      break;
+    case "succeeded":
+      if (taskType !== "instant") {
+        actions.push({ label: "重新排期", targetStatus: "scheduled", variant: "secondary" });
+      }
+      break;
+  }
+  return actions;
 }
 
 function ApprovalPanel({
@@ -131,13 +180,11 @@ function PartialSuccessPanel({
   taskId,
   taskCategory,
   resumeFromStep,
-  completedSteps,
   onDone,
 }: {
   taskId: string;
   taskCategory: string;
   resumeFromStep?: number | null;
-  completedSteps: number[];
   onDone: () => void;
 }) {
   const { resumeTask } = useTasks();
@@ -158,7 +205,7 @@ function PartialSuccessPanel({
   const handleFullRerun = async () => {
     setLoading(true);
     try {
-      await resumeTask(taskId, 0, "production");
+      await tauri.taskTransition(taskId, "plan_ready");
     } finally {
       setLoading(false);
       onDone();
@@ -177,15 +224,11 @@ function PartialSuccessPanel({
     >
       <h4 style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 700 }}>部分完成</h4>
       <p style={{ fontSize: 13, margin: "0 0 4px", color: "var(--admiral-text-secondary)" }}>
-        已完成 {completedSteps.length} 个步骤，在步骤 {resumeFromStep ?? "?"} 处中断。
+        在步骤 {resumeFromStep ?? "?"} 处中断。
       </p>
       <p style={{ fontSize: 12, margin: "0 0 10px", color: "var(--admiral-text-placeholder)" }}>
         任务类型：{categoryLabel(taskCategory)}
-        {defaultResume
-          ? "（建议从断点续跑）"
-          : taskCategory === "create"
-            ? "（建议全量重跑）"
-            : "（请选择）"}
+        {defaultResume ? "（建议从断点续跑）" : taskCategory === "create" ? "（建议全量重跑）" : "（请选择）"}
       </p>
       <div style={{ display: "flex", gap: 8 }}>
         <Button
@@ -212,11 +255,13 @@ function PartialSuccessPanel({
 export function TaskDetail() {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const tasks = useTaskStore((s) => s.tasks);
+  const { fetchTasks } = useTaskStore();
   const task = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : null;
   const navigate = useNavigate();
-  const { getPendingApproval, refresh } = useTasks();
+  const { getPendingApproval } = useTasks();
 
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
     if (task?.status === "waiting_for_approval") {
@@ -226,10 +271,26 @@ export function TaskDetail() {
     }
   }, [task?.id, task?.status, getPendingApproval]);
 
-  const handleActionDone = async () => {
+  const handleActionDone = useCallback(async () => {
     setPendingApproval(null);
-    await refresh();
-  };
+    await fetchTasks();
+  }, [fetchTasks]);
+
+  const handleTransition = useCallback(
+    async (targetStatus: string) => {
+      if (!task) return;
+      setActionLoading(true);
+      try {
+        await tauri.taskTransition(task.id, targetStatus as any);
+        await fetchTasks();
+      } catch (e) {
+        console.error("transition failed:", e);
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [task, fetchTasks]
+  );
 
   if (!task) {
     return (
@@ -261,8 +322,12 @@ export function TaskDetail() {
             ? 60
             : 0;
 
+  const taskType = task.type === "scheduled" ? "cron" : task.type;
+  const actions = getAvailableActions(task.status, taskType);
+
   return (
     <div className="admiral-surface" style={{ padding: 14 }}>
+      {/* Header card */}
       <div
         style={{
           border: "1px solid var(--admiral-border)",
@@ -315,6 +380,23 @@ export function TaskDetail() {
             </div>
           </div>
         )}
+
+        {/* Action buttons */}
+        {actions.length > 0 && (
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            {actions.map((a) => (
+              <Button
+                key={a.targetStatus}
+                variant={a.variant as any}
+                size="sm"
+                disabled={actionLoading}
+                onClick={() => handleTransition(a.targetStatus)}
+              >
+                {a.label}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Approval panel */}
@@ -332,7 +414,6 @@ export function TaskDetail() {
           taskId={task.id}
           taskCategory={task.task_category}
           resumeFromStep={undefined}
-          completedSteps={[]}
           onDone={handleActionDone}
         />
       )}

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTaskStore, type TaskMeta, type TaskStatus } from "@/stores/taskStore";
 import { useUiStore } from "@/stores/uiStore";
 import { Button } from "@/components/common/Button";
+import * as tauri from "@/lib/tauri";
 
 function taskStatusLabel(s: TaskStatus): string {
   const map: Record<string, string> = {
@@ -56,19 +57,202 @@ function formatDate(v: string): string {
   });
 }
 
+interface TransitionItem {
+  label: string;
+  target: TaskStatus;
+}
+
+function getTransitions(status: TaskStatus, taskType: string): TransitionItem[] {
+  const items: TransitionItem[] = [];
+  switch (status) {
+    case "draft":
+      items.push({ label: "开始规划", target: "planning" });
+      break;
+    case "planning":
+      items.push({ label: "完成规划", target: "plan_ready" });
+      items.push({ label: "退回草稿", target: "draft" });
+      break;
+    case "plan_ready":
+      items.push({ label: "开始执行", target: "running" });
+      if (taskType !== "instant") items.push({ label: "加入排期", target: "scheduled" });
+      items.push({ label: "退回草稿", target: "draft" });
+      break;
+    case "scheduled":
+      items.push({ label: "立即执行", target: "running" });
+      items.push({ label: "暂停", target: "paused" });
+      break;
+    case "running":
+      items.push({ label: "暂停", target: "paused" });
+      break;
+    case "paused":
+      items.push({ label: "继续执行", target: "running" });
+      if (taskType !== "instant") items.push({ label: "回到排期", target: "scheduled" });
+      break;
+    case "succeeded":
+      if (taskType !== "instant") items.push({ label: "重新排期", target: "scheduled" });
+      break;
+    case "failed":
+      items.push({ label: "重试", target: "plan_ready" });
+      break;
+    case "partially_succeeded":
+      items.push({ label: "重试（全量）", target: "plan_ready" });
+      break;
+    case "cancelled":
+      items.push({ label: "重新编辑", target: "draft" });
+      break;
+  }
+  return items;
+}
+
+// ---- Context Menu ----
+
+interface ContextMenuState {
+  taskId: string;
+  taskName: string;
+  x: number;
+  y: number;
+  transitions: TransitionItem[];
+}
+
+function ContextMenu({
+  menu,
+  onClose,
+  onTransition,
+  onDelete,
+}: {
+  menu: ContextMenuState;
+  onClose: () => void;
+  onTransition: (taskId: string, target: TaskStatus) => void;
+  onDelete: (taskId: string) => Promise<void>;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onCloseRef.current();
+    };
+    const escHandler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCloseRef.current();
+    };
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("keydown", escHandler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", escHandler);
+    };
+  }, []);
+
+  const itemStyle: React.CSSProperties = {
+    display: "block",
+    width: "100%",
+    padding: "7px 14px",
+    fontSize: 13,
+    textAlign: "left",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    color: "var(--admiral-text-primary)",
+    whiteSpace: "nowrap",
+  };
+
+  const handleDeleteClick = useCallback(async () => {
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      return;
+    }
+    setDeleting(true);
+    try {
+      await onDelete(menu.taskId);
+    } finally {
+      setDeleting(false);
+    }
+  }, [confirmingDelete, onDelete, menu.taskId]);
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: "fixed",
+        left: menu.x,
+        top: menu.y,
+        zIndex: 9999,
+        minWidth: 160,
+        background: "var(--admiral-card, #fff)",
+        border: "1px solid var(--admiral-border)",
+        borderRadius: 8,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
+        padding: "4px 0",
+      }}
+    >
+      {menu.transitions.length > 0 && (
+        <>
+          <div style={{ padding: "4px 14px", fontSize: 11, color: "var(--admiral-text-placeholder)", fontWeight: 600 }}>
+            切换状态
+          </div>
+          {menu.transitions.map((t) => (
+            <button
+              key={t.target}
+              type="button"
+              style={itemStyle}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--admiral-hover, #f0f4f8)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+              onClick={() => {
+                onTransition(menu.taskId, t.target);
+                onClose();
+              }}
+            >
+              {t.label} → {taskStatusLabel(t.target)}
+            </button>
+          ))}
+          <div style={{ height: 1, background: "var(--admiral-border)", margin: "4px 0" }} />
+        </>
+      )}
+      <button
+        type="button"
+        disabled={deleting}
+        style={{
+          ...itemStyle,
+          color: confirmingDelete ? "#fff" : "var(--color-danger, #e53e3e)",
+          background: confirmingDelete ? "var(--color-danger, #e53e3e)" : "none",
+          fontWeight: confirmingDelete ? 600 : 400,
+        }}
+        onMouseEnter={(e) => {
+          if (!confirmingDelete) (e.currentTarget as HTMLElement).style.background = "rgba(229,62,62,0.06)";
+        }}
+        onMouseLeave={(e) => {
+          if (!confirmingDelete) (e.currentTarget as HTMLElement).style.background = "none";
+        }}
+        onClick={handleDeleteClick}
+      >
+        {deleting ? "删除中..." : confirmingDelete ? "确认删除？" : "删除任务"}
+      </button>
+    </div>
+  );
+}
+
+// ---- TaskListItem ----
+
 function TaskListItem({
   task,
   selected,
   onSelect,
+  onContextMenu,
 }: {
   task: TaskMeta;
   selected: boolean;
   onSelect: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
 }) {
   return (
     <button
       type="button"
       onClick={onSelect}
+      onContextMenu={onContextMenu}
       role="option"
       aria-selected={selected}
       className="admiral-page-enter"
@@ -143,12 +327,15 @@ function TaskListItem({
   );
 }
 
+// ---- TaskList ----
+
 export function TaskList() {
   const navigate = useNavigate();
   const { tasks, fetchTasks } = useTaskStore();
   const { selectedTaskId, setSelectedTaskId } = useUiStore();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | TaskStatus>("all");
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   useEffect(() => {
     fetchTasks();
@@ -161,6 +348,51 @@ export function TaskList() {
       return hitStatus && hitQuery;
     });
   }, [tasks, query, statusFilter]);
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, task: TaskMeta) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const taskType = task.type === "scheduled" ? "cron" : task.type;
+      setContextMenu({
+        taskId: task.id,
+        taskName: task.name,
+        x: e.clientX,
+        y: e.clientY,
+        transitions: getTransitions(task.status, taskType),
+      });
+    },
+    []
+  );
+
+  const handleTransition = useCallback(
+    async (taskId: string, target: TaskStatus) => {
+      try {
+        await tauri.taskTransition(taskId, target);
+        await fetchTasks();
+      } catch (err) {
+        console.error("transition failed:", err);
+      }
+    },
+    [fetchTasks]
+  );
+
+  const handleDelete = useCallback(
+    async (taskId: string) => {
+      try {
+        await tauri.taskDelete(taskId);
+        setContextMenu(null);
+        if (selectedTaskId === taskId) {
+          setSelectedTaskId(null);
+        }
+        await fetchTasks();
+      } catch (err: unknown) {
+        console.error("delete failed:", err);
+        alert(`删除失败: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+    [fetchTasks, selectedTaskId, setSelectedTaskId]
+  );
 
   return (
     <div
@@ -245,10 +477,20 @@ export function TaskList() {
               task={t}
               selected={selectedTaskId === t.id}
               onSelect={() => setSelectedTaskId(t.id)}
+              onContextMenu={(e) => handleContextMenu(e, t)}
             />
           ))
         )}
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          menu={contextMenu}
+          onClose={() => setContextMenu(null)}
+          onTransition={handleTransition}
+          onDelete={handleDelete}
+        />
+      )}
     </div>
   );
 }

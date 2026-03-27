@@ -72,6 +72,12 @@ impl TaskEngine {
         db::models::get_task(&conn, id)
     }
 
+    pub fn delete_task(&self, id: Uuid) -> anyhow::Result<()> {
+        let path = db::models::db_path();
+        let conn = db::models::open_rw(&path)?;
+        db::models::delete_task(&conn, id)
+    }
+
     pub fn list_tasks(&self, status_filter: Option<TaskStatus>) -> anyhow::Result<Vec<Task>> {
         let path = db::models::db_path();
         let conn = db::models::open_ro(&path)?;

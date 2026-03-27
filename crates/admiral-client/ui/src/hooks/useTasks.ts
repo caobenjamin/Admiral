@@ -43,6 +43,14 @@ export function useTasks(statusFilter?: TaskStatus | null) {
     []
   );
 
+  const deleteTask = useCallback(
+    async (id: string) => {
+      await tauri.taskDelete(id);
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+    },
+    []
+  );
+
   const getTask = useCallback(async (id: string) => {
     return tauri.taskGet(id);
   }, []);
@@ -92,12 +100,20 @@ export function useTasks(statusFilter?: TaskStatus | null) {
     return tauri.permissionRevoke(id);
   }, []);
 
+  const transitionTask = useCallback(
+    async (taskId: string, newStatus: import("../lib/types").TaskStatus) => {
+      return tauri.taskTransition(taskId, newStatus);
+    },
+    []
+  );
+
   return {
     tasks,
     loading,
     error,
     refresh,
     createTask,
+    deleteTask,
     getTask,
     runDryRun,
     runTestRun,
@@ -108,5 +124,6 @@ export function useTasks(statusFilter?: TaskStatus | null) {
     getPendingApproval,
     listPermissions,
     revokePermission,
+    transitionTask,
   };
 }

@@ -224,6 +224,12 @@ pub async fn task_list(
 }
 
 #[tauri::command]
+pub async fn task_delete(state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
+    let id = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    crate::commands::task::delete_task(state.task_engine.as_ref(), id)
+}
+
+#[tauri::command]
 pub async fn task_get(state: tauri::State<'_, AppState>, id: String) -> Result<Option<Task>, String> {
     let id = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     crate::commands::task::get_task(state.task_engine.as_ref(), id)
@@ -338,6 +344,57 @@ pub async fn permission_list() -> Result<Vec<admiral_types::task::OperationPermi
 #[tauri::command]
 pub async fn permission_revoke(id: String) -> Result<(), String> {
     crate::commands::task::revoke_permission(id)
+}
+
+// ---------- Task state transition ----------
+
+#[tauri::command]
+pub async fn task_transition(
+    state: tauri::State<'_, AppState>,
+    task_id: String,
+    new_status: TaskStatus,
+) -> Result<Task, String> {
+    let id = Uuid::parse_str(&task_id).map_err(|e| e.to_string())?;
+    let mut task = state
+        .task_engine
+        .get_task(id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "task not found".to_string())?;
+    state
+        .task_engine
+        .transition_to(&mut task, new_status)
+        .map_err(|e| e.to_string())?;
+    Ok(task)
+}
+
+// ---------- Conversation history for frontend display ----------
+
+#[derive(serde::Serialize)]
+pub struct ConversationMessage {
+    pub id: String,
+    pub role: String,
+    pub content: String,
+    pub tool_calls: Option<serde_json::Value>,
+    pub timestamp: String,
+}
+
+#[tauri::command]
+pub async fn task_load_conversations(
+    task_id: String,
+) -> Result<Vec<ConversationMessage>, String> {
+    let db_path = db::models::db_path();
+    let conn = db::models::open_ro(&db_path).map_err(|e| e.to_string())?;
+    let rows = db::models::load_conversations_by_task(&conn, &task_id).map_err(|e| e.to_string())?;
+    Ok(rows
+        .into_iter()
+        .map(|r| ConversationMessage {
+            id: r.id,
+            role: r.role,
+            content: r.content,
+            tool_calls: r.tool_calls.and_then(|s| serde_json::from_str(&s).ok()),
+            timestamp: r.timestamp,
+        })
+        .collect())
 }
 
 // ---------- Agent chat (with conversation persistence) ----------

@@ -193,6 +193,17 @@ fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
     })
 }
 
+/// Delete a task and its related data (runs, conversations, pending approvals).
+pub fn delete_task(conn: &rusqlite::Connection, id: Uuid) -> anyhow::Result<()> {
+    let id_str = id.to_string();
+    conn.execute("DELETE FROM pending_approvals WHERE task_id = ?1", params![id_str])?;
+    conn.execute("DELETE FROM conversations WHERE task_id = ?1", params![id_str])?;
+    conn.execute("DELETE FROM task_runs WHERE task_id = ?1", params![id_str])?;
+    conn.execute("DELETE FROM operation_permissions WHERE scope_type = 'task' AND scope_id = ?1", params![id_str])?;
+    conn.execute("DELETE FROM tasks WHERE id = ?1", params![id_str])?;
+    Ok(())
+}
+
 // ========================== Task Runs ==========================
 
 /// Insert a task run.
