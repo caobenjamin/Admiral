@@ -28,7 +28,8 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 dirs = "5"
 
 # Network
-reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
+futures-util = "0.3"
 # tokio-tungstenite = "0.24"
 
 # Crypto (for credential file encryption)

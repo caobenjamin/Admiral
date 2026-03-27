@@ -6,8 +6,27 @@ use crate::agent::profile;
 use crate::network::api_client::ApiClient;
 use admiral_types::api::LlmChatRequest;
 use admiral_types::skill::{SkillCall, SkillResult};
+use futures_util::StreamExt;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::mpsc;
+
+/// Events emitted during streaming LLM interaction.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type")]
+pub enum StreamEvent {
+    #[serde(rename = "delta")]
+    Delta { content: String },
+    #[serde(rename = "tool_use")]
+    ToolUse { name: String },
+    #[serde(rename = "tool_result")]
+    ToolResult { name: String, success: bool },
+    #[serde(rename = "done")]
+    Done,
+    #[serde(rename = "error")]
+    Error { message: String },
+}
 
 /// Response from one agent turn (final text and optional tool calls made).
 #[derive(Clone, Debug, serde::Serialize)]
@@ -43,12 +62,24 @@ impl AgentRuntime {
         })
     }
 
-    /// Process one user message: build context, call LLM, execute tool_calls until done, return final response.
+    /// Non-streaming process (kept for backward compatibility, e.g. memory_updater).
     pub async fn process_message(
+        &self,
+        session: Session,
+        user_message: &str,
+        access_token: Option<&str>,
+    ) -> Result<AgentResponse, anyhow::Error> {
+        let (tx, _rx) = mpsc::channel(1);
+        self.process_message_stream(session, user_message, access_token, tx).await
+    }
+
+    /// Streaming process: emits StreamEvent tokens via `tx` while performing the ReAct loop.
+    pub async fn process_message_stream(
         &self,
         mut session: Session,
         user_message: &str,
         access_token: Option<&str>,
+        tx: mpsc::Sender<StreamEvent>,
     ) -> Result<AgentResponse, anyhow::Error> {
         session.messages.push(Message {
             role: "user".to_string(),
@@ -76,6 +107,7 @@ impl AgentRuntime {
         loop {
             turn += 1;
             if turn > max_turns {
+                let _ = tx.send(StreamEvent::Done).await;
                 break Ok(AgentResponse {
                     content: "达到最大轮次，请简化请求。".to_string(),
                     tool_calls_used,
@@ -99,7 +131,7 @@ impl AgentRuntime {
 
             let req = LlmChatRequest {
                 messages,
-                stream: false,
+                stream: true,
                 model: self.context.profile.default_model.clone(),
                 max_tokens: Some(4096),
                 tools,
@@ -107,51 +139,30 @@ impl AgentRuntime {
             };
 
             let token = access_token.ok_or_else(|| anyhow::anyhow!("access_token required for LLM"))?;
-            let bytes = self
+
+            let resp = self
                 .api_client
-                .llm_chat(token, &req)
+                .llm_chat_stream(token, &req)
                 .await
-                .map_err(|e| anyhow::anyhow!("llm_chat: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("llm_chat_stream: {}", e))?;
 
-            let resp: Value = serde_json::from_slice(&bytes)
-                .map_err(|e| anyhow::anyhow!("parse LLM response: {}", e))?;
-
-            let choice = resp
-                .get("choices")
-                .and_then(|c| c.get(0))
-                .and_then(|c| c.get("message"));
-            let message = match choice {
-                Some(m) => m,
-                None => {
-                    let content = resp
-                        .get("error")
-                        .and_then(|e| e.get("message"))
-                        .and_then(|m| m.as_str())
-                        .unwrap_or("LLM returned no choices");
-                    break Ok(AgentResponse {
-                        content: content.to_string(),
-                        tool_calls_used,
-                        session: current_session,
-                    });
-                }
-            };
-
-            let content = message
-                .get("content")
-                .and_then(|c| c.as_str())
-                .unwrap_or("")
-                .to_string();
-            let tool_calls = message.get("tool_calls").and_then(|t| t.as_array());
+            let (content, tool_calls_value) = parse_sse_stream(resp, &tx).await?;
 
             current_session.messages.push(Message {
                 role: "assistant".to_string(),
                 content: if content.is_empty() { None } else { Some(content.clone()) },
-                tool_calls: message.get("tool_calls").cloned(),
+                tool_calls: tool_calls_value.clone(),
                 name: None,
                 tool_call_id: None,
             });
 
-            if tool_calls.is_none() || tool_calls.as_ref().map(|a| a.is_empty()).unwrap_or(true) {
+            let tool_calls_arr = tool_calls_value
+                .as_ref()
+                .and_then(|v| v.as_array())
+                .cloned();
+
+            if tool_calls_arr.is_none() || tool_calls_arr.as_ref().map(|a| a.is_empty()).unwrap_or(true) {
+                let _ = tx.send(StreamEvent::Done).await;
                 break Ok(AgentResponse {
                     content,
                     tool_calls_used,
@@ -159,18 +170,21 @@ impl AgentRuntime {
                 });
             }
 
-            let tool_calls = tool_calls.unwrap();
-            for tc in tool_calls {
+            let tool_calls = tool_calls_arr.unwrap();
+            for tc in &tool_calls {
                 let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("");
                 let func = tc.get("function").ok_or_else(|| anyhow::anyhow!("tool_call missing function"))?;
                 let name = func.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let args_str = func.get("arguments").and_then(|v| v.as_str()).unwrap_or("{}");
                 let params: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
 
+                let _ = tx.send(StreamEvent::ToolUse { name: name.to_string() }).await;
+
                 let skill_id = resolve_tool_name_to_skill_id(name, self.context.skill_registry.as_ref());
                 let skill_id = match skill_id {
                     Some(s) => s,
                     None => {
+                        let _ = tx.send(StreamEvent::ToolResult { name: name.to_string(), success: false }).await;
                         current_session.messages.push(Message {
                             role: "tool".to_string(),
                             content: Some(format!("error: unknown tool {}", name)),
@@ -196,6 +210,8 @@ impl AgentRuntime {
                     .await
                     .unwrap_or_else(|e| SkillResult::err(e.to_string(), None));
 
+                let _ = tx.send(StreamEvent::ToolResult { name: name.to_string(), success: result.success }).await;
+
                 tool_calls_used.push((skill_id, result.clone()));
 
                 let result_content = if result.success {
@@ -216,9 +232,101 @@ impl AgentRuntime {
     }
 }
 
-/// Resolve LLM tool name to skill_id. 账户列表只走本地绑定表，不路由到 MAPI。
+/// Parse an SSE stream from the LLM, emitting content deltas and accumulating tool_calls.
+/// Returns (full_content, tool_calls_json_value).
+async fn parse_sse_stream(
+    resp: reqwest::Response,
+    tx: &mpsc::Sender<StreamEvent>,
+) -> Result<(String, Option<Value>), anyhow::Error> {
+    let mut content = String::new();
+    let mut tool_calls_map: HashMap<u64, (String, String, String)> = HashMap::new();
+    let mut buffer = String::new();
+
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.map_err(|e| anyhow::anyhow!("stream read: {}", e))?;
+        buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+        while let Some(pos) = buffer.find('\n') {
+            let line = buffer[..pos].to_string();
+            buffer = buffer[pos + 1..].to_string();
+
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with(':') {
+                continue;
+            }
+            if trimmed == "data: [DONE]" {
+                continue;
+            }
+
+            let data = match trimmed.strip_prefix("data: ") {
+                Some(d) => d,
+                None => continue,
+            };
+
+            let json: Value = match serde_json::from_str(data) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            let delta = match json.pointer("/choices/0/delta") {
+                Some(d) => d,
+                None => continue,
+            };
+
+            if let Some(c) = delta.get("content").and_then(|v| v.as_str()) {
+                if !c.is_empty() {
+                    content.push_str(c);
+                    let _ = tx.send(StreamEvent::Delta { content: c.to_string() }).await;
+                }
+            }
+
+            if let Some(tcs) = delta.get("tool_calls").and_then(|v| v.as_array()) {
+                for tc in tcs {
+                    let index = tc.get("index").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let entry = tool_calls_map.entry(index).or_insert_with(|| (String::new(), String::new(), String::new()));
+                    if let Some(id) = tc.get("id").and_then(|v| v.as_str()) {
+                        entry.0 = id.to_string();
+                    }
+                    if let Some(func) = tc.get("function") {
+                        if let Some(name) = func.get("name").and_then(|v| v.as_str()) {
+                            entry.1 = name.to_string();
+                        }
+                        if let Some(args) = func.get("arguments").and_then(|v| v.as_str()) {
+                            entry.2.push_str(args);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let tool_calls_value = if tool_calls_map.is_empty() {
+        None
+    } else {
+        let mut sorted: Vec<_> = tool_calls_map.into_iter().collect();
+        sorted.sort_by_key(|(k, _)| *k);
+        let arr: Vec<Value> = sorted
+            .into_iter()
+            .map(|(_, (id, name, args))| {
+                json!({
+                    "id": id,
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": args,
+                    }
+                })
+            })
+            .collect();
+        Some(Value::Array(arr))
+    };
+
+    Ok((content, tool_calls_value))
+}
+
+/// Resolve LLM tool name to skill_id.
 fn resolve_tool_name_to_skill_id(name: &str, registry: &crate::skill::registry::SkillRegistry) -> Option<String> {
-    // 明确别名：无论 LLM 用 bili_account_list 还是 bili_account_list_local，都走本地 bili.account.list，避免被当成 MAPI 报 account_id required
     if name == "bili_account_list" || name == "bili_account_list_local" {
         if registry.get("bili.account.list").is_some() {
             return Some("bili.account.list".to_string());

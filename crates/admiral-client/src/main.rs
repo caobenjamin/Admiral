@@ -50,6 +50,7 @@ fn main() {
             tauri_bridge::task_transition,
             tauri_bridge::task_load_conversations,
             tauri_bridge::agent_chat,
+            tauri_bridge::agent_chat_stream,
         ])
         .run(tauri::generate_context!())
         .expect("error running Admiral");

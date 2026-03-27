@@ -37,10 +37,48 @@ export function HomePage() {
   const { fetchTasks } = useTaskStore();
   const navigate = useNavigate();
 
-  const { chat, loading, error } = useAgent(selectedTaskId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [showTaskDetail, setShowTaskDetail] = useState(true);
   const prevTaskIdRef = useRef<string | null>(null);
+  const streamingMsgIdRef = useRef<string | null>(null);
+
+  const { chat, loading, error } = useAgent(selectedTaskId, {
+    onDelta(content) {
+      const msgId = streamingMsgIdRef.current;
+      if (!msgId) return;
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.id === msgId) {
+          return [...prev.slice(0, -1), { ...last, content: last.content + content }];
+        }
+        return prev;
+      });
+    },
+    onToolUse(name) {
+      const msgId = streamingMsgIdRef.current;
+      if (!msgId) return;
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.id === msgId) {
+          const toolHint = `\n\n> 调用工具: ${name} ...`;
+          return [...prev.slice(0, -1), { ...last, content: last.content + toolHint }];
+        }
+        return prev;
+      });
+    },
+    onToolResult(name, success) {
+      const msgId = streamingMsgIdRef.current;
+      if (!msgId) return;
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.id === msgId) {
+          const resultHint = success ? ` 完成` : ` 失败`;
+          return [...prev.slice(0, -1), { ...last, content: last.content + resultHint + "\n\n" }];
+        }
+        return prev;
+      });
+    },
+  });
 
   useEffect(() => {
     loadUserAndLicense().then((ok) => {
@@ -48,7 +86,6 @@ export function HomePage() {
     });
   }, [loadUserAndLicense, navigate]);
 
-  // Load conversation history when task changes
   useEffect(() => {
     if (selectedTaskId === prevTaskIdRef.current) return;
     prevTaskIdRef.current = selectedTaskId;
@@ -76,16 +113,31 @@ export function HomePage() {
     async (content: string) => {
       if (!selectedTaskId) return;
       const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", content };
-      setMessages((prev) => [...prev, userMsg]);
+      const assistantMsgId = `a-${Date.now()}`;
+      streamingMsgIdRef.current = assistantMsgId;
+
+      setMessages((prev) => [
+        ...prev,
+        userMsg,
+        { id: assistantMsgId, role: "assistant", content: "" },
+      ]);
+
       try {
         const response = await chat(content);
         const list = sessionMessagesToChatMessages(response.session.messages);
         setMessages(list);
-        // Refresh task list to pick up any status changes
         fetchTasks();
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "请求失败，请重试。";
-        setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: "assistant", content: errMsg }]);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last && last.id === assistantMsgId) {
+            return [...prev.slice(0, -1), { ...last, content: errMsg }];
+          }
+          return [...prev, { id: `err-${Date.now()}`, role: "assistant", content: errMsg }];
+        });
+      } finally {
+        streamingMsgIdRef.current = null;
       }
     },
     [chat, selectedTaskId, fetchTasks]

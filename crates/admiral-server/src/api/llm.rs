@@ -70,29 +70,7 @@ pub async fn chat(
             }
         };
         let status = resp.status();
-        let bytes = match resp.bytes().await {
-            Ok(b) => b,
-            Err(e) => {
-                let err_msg = e.to_string();
-                if let Err(le) = crate::service::log_service::log_external_request(
-                    &state.db,
-                    "llm",
-                    &request_url,
-                    "POST",
-                    Some(&request_body_str),
-                    Some(status.as_u16()),
-                    None,
-                    Some(&err_msg),
-                    Some(user_id),
-                )
-                .await
-                {
-                    warn!(error = %le, "external_request_log insert failed");
-                }
-                return Err(crate::error::AppError::Upstream(err_msg));
-            }
-        };
-        let response_body_db = crate::utils::truncate_for_db(&String::from_utf8_lossy(&bytes), DB_BODY_MAX);
+        // Log request only; response body is streamed and not buffered
         if let Err(le) = crate::service::log_service::log_external_request(
             &state.db,
             "llm",
@@ -100,7 +78,7 @@ pub async fn chat(
             "POST",
             Some(&request_body_str),
             Some(status.as_u16()),
-            Some(&response_body_db),
+            Some("[SSE stream]"),
             None,
             Some(user_id),
         )
@@ -108,16 +86,13 @@ pub async fn chat(
         {
             warn!(error = %le, "external_request_log insert failed");
         }
-        info!(
-            response_status = status.as_u16(),
-            response_stream = true,
-            response_body_preview = %crate::utils::bytes_preview(bytes.as_ref(), 512),
-            "response to client"
-        );
+        info!(response_status = status.as_u16(), response_stream = true, "streaming SSE to client");
+        let stream = resp.bytes_stream();
         Ok(Response::builder()
             .status(status.as_u16())
             .header("Content-Type", "text/event-stream")
-            .body(Body::from(bytes.to_vec()))
+            .header("Cache-Control", "no-cache")
+            .body(Body::from_stream(stream))
             .unwrap())
     } else {
         match llm.chat(&body).await {

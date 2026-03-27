@@ -7,13 +7,14 @@ use crate::db;
 use crate::network::api_client::ApiClient;
 use crate::agent::memory::MemoryStore;
 use crate::agent::memory_updater;
-use crate::agent::runtime::{AgentResponse, AgentRuntime};
+use crate::agent::runtime::{AgentResponse, AgentRuntime, StreamEvent};
 use crate::agent::context::{Message, Session};
 use crate::skill::registry::SkillRegistry;
 use crate::task::engine::TaskEngine;
 use admiral_types::api::*;
 use admiral_types::task::{Task, TaskCategory, TaskStatus, TaskType};
 use std::sync::Arc;
+use tauri::Emitter;
 use uuid::Uuid;
 
 /// App state held by Tauri (thread-safe).
@@ -397,7 +398,119 @@ pub async fn task_load_conversations(
         .collect())
 }
 
-// ---------- Agent chat (with conversation persistence) ----------
+// ---------- Agent chat (streaming, with conversation persistence) ----------
+
+#[tauri::command]
+pub async fn agent_chat_stream(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    message: String,
+    task_id: Option<String>,
+) -> Result<AgentResponse, String> {
+    let token = state.auth.get_access_token().map_err(|e| e.to_string())?;
+
+    let task_uuid = task_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
+    let session_id = task_uuid
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    let mut messages: Vec<Message> = Vec::new();
+    if let Some(ref tid) = task_id {
+        let db_path = db::models::db_path();
+        if let Ok(conn) = db::models::open_ro(&db_path) {
+            if let Ok(rows) = db::models::load_conversations_by_task(&conn, tid) {
+                for row in rows {
+                    messages.push(Message {
+                        role: row.role,
+                        content: if row.content.is_empty() { None } else { Some(row.content) },
+                        tool_calls: row.tool_calls.and_then(|s| serde_json::from_str(&s).ok()),
+                        name: None,
+                        tool_call_id: None,
+                    });
+                }
+            }
+        }
+    }
+
+    let msg_count_before = messages.len();
+
+    let session = Session {
+        id: session_id.clone(),
+        task_id: task_uuid,
+        messages,
+    };
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<StreamEvent>(256);
+
+    let app_clone = app.clone();
+    let forward_task = tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            let _ = app_clone.emit("agent-stream", &event);
+        }
+    });
+
+    let guard = state.agent_runtime.read().await;
+    let runtime = guard.as_ref().ok_or("Agent not initialized")?;
+    let response = runtime
+        .process_message_stream(session, &message, Some(&token), tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let _ = forward_task.await;
+
+    // Persist new messages to DB
+    let new_messages = &response.session.messages[msg_count_before..];
+    if !new_messages.is_empty() {
+        let db_path = db::models::db_path();
+        if let Ok(conn) = db::models::open_rw(&db_path) {
+            for msg in new_messages {
+                let row = db::models::ConversationRow {
+                    id: Uuid::new_v4().to_string(),
+                    task_id: task_id.clone(),
+                    session_id: session_id.clone(),
+                    role: msg.role.clone(),
+                    content: msg.content.clone().unwrap_or_default(),
+                    tool_calls: msg.tool_calls.as_ref().and_then(|v| serde_json::to_string(v).ok()),
+                    tool_result: None,
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                };
+                let _ = db::models::save_conversation_message(&conn, &row);
+            }
+        }
+    }
+
+    // Async memory update (non-blocking)
+    {
+        let api_client = Arc::clone(&state.api_client);
+        let token_owned = token.clone();
+        let user_msg = message.clone();
+        let ai_response = response.content.clone();
+        let task_id_clone = task_id.clone();
+        let task_uuid_clone = task_uuid;
+
+        tokio::spawn(async move {
+            let memory = match MemoryStore::new() {
+                Ok(m) => m,
+                Err(_) => return,
+            };
+            if let Some(tid) = task_uuid_clone {
+                let task_name = task_id_clone.as_deref().unwrap_or("unknown");
+                memory_updater::maybe_update_task_memory(
+                    tid, task_name, &user_msg, &ai_response, &memory, &api_client, &token_owned,
+                )
+                .await;
+            }
+            memory_updater::maybe_update_user_memory(
+                &user_msg, &ai_response, &memory, &api_client, &token_owned,
+            )
+            .await;
+        });
+    }
+
+    Ok(response)
+}
+
+// ---------- Agent chat (non-streaming, kept for backward compat) ----------
 
 #[tauri::command]
 pub async fn agent_chat(

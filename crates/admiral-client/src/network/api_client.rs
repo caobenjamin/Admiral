@@ -319,6 +319,38 @@ impl ApiClient {
         Ok(bytes)
     }
 
+    /// LLM chat streaming: returns the raw response for SSE processing.
+    pub async fn llm_chat_stream(
+        &self,
+        access_token: &str,
+        req: &LlmChatRequest,
+    ) -> Result<reqwest::Response, ApiError> {
+        let path = "/api/v1/llm/chat";
+        let mut stream_req = req.clone();
+        stream_req.stream = true;
+        let body = serde_json::to_value(&stream_req).map_err(|e| ApiError::Serialization(e.to_string()))?;
+        let url = self.url(path);
+        let resp = self
+            .client
+            .post(&url)
+            .timeout(Duration::from_secs(300))
+            .header("Authorization", format!("Bearer {}", access_token))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let bytes = resp.bytes().await?.to_vec();
+            return Err(ApiError::Server {
+                status,
+                code: "LLM_ERROR".to_string(),
+                message: String::from_utf8_lossy(&bytes).to_string(),
+            });
+        }
+        Ok(resp)
+    }
+
     // ---------- Knowledge (RAG) ----------
 
     pub async fn knowledge_query(

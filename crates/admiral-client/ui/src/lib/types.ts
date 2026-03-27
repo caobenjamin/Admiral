@@ -169,6 +169,14 @@ export interface OperationPermission {
   expires_at?: string | null;
 }
 
+// ---------- Stream Events ----------
+export type StreamEvent =
+  | { type: "delta"; content: string }
+  | { type: "tool_use"; name: string }
+  | { type: "tool_result"; name: string; success: boolean }
+  | { type: "done" }
+  | { type: "error"; message: string };
+
 // ---------- Agent ----------
 export interface AgentResponse {
   content: string;

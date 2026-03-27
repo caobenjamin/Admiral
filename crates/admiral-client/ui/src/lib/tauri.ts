@@ -227,3 +227,10 @@ export async function agentChat(
 ): Promise<AgentResponse> {
   return invoke("agent_chat", { message, taskId: taskId ?? null });
 }
+
+export async function agentChatStream(
+  message: string,
+  taskId?: string | null
+): Promise<AgentResponse> {
+  return invoke("agent_chat_stream", { message, taskId: taskId ?? null });
+}
