@@ -424,6 +424,22 @@ pub async fn task_load_conversations(
         .collect())
 }
 
+// ---------- Task spec ----------
+
+#[tauri::command]
+pub async fn task_load_spec(task_id: String) -> Result<String, String> {
+    let id = Uuid::parse_str(&task_id).map_err(|e| e.to_string())?;
+    let memory = MemoryStore::new().map_err(|e| e.to_string())?;
+    memory.load_task_spec(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn task_list_run_reports(task_id: String) -> Result<Vec<String>, String> {
+    let id = Uuid::parse_str(&task_id).map_err(|e| e.to_string())?;
+    let memory = MemoryStore::new().map_err(|e| e.to_string())?;
+    memory.list_run_reports(id).map_err(|e| e.to_string())
+}
+
 // ---------- Agent chat helpers ----------
 
 /// Load conversation history from DB and build a Session.
@@ -434,7 +450,7 @@ fn load_session(task_id: &Option<String>) -> (String, Option<Uuid>, Vec<Message>
         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
     let mut messages: Vec<Message> = Vec::new();
-    if let Some(ref tid) = task_id {
+    if let Some(tid) = task_id {
         let db_path = db::models::db_path();
         if let Ok(conn) = db::models::open_ro(&db_path) {
             if let Ok(rows) = db::models::load_conversations_by_task(&conn, tid) {
@@ -482,9 +498,10 @@ fn persist_new_messages(
     }
 }
 
-/// Spawn a non-blocking background task for memory extraction.
+/// Spawn a non-blocking background task for memory extraction and spec update.
 fn spawn_memory_update(
     api_client: &Arc<ApiClient>,
+    task_engine: &Arc<TaskEngine>,
     token: &str,
     user_msg: &str,
     ai_response: &str,
@@ -492,6 +509,7 @@ fn spawn_memory_update(
     task_uuid: Option<Uuid>,
 ) {
     let api_client = Arc::clone(api_client);
+    let task_engine = Arc::clone(task_engine);
     let token_owned = token.to_string();
     let user_msg = user_msg.to_string();
     let ai_response = ai_response.to_string();
@@ -506,6 +524,13 @@ fn spawn_memory_update(
             let task_name = task_id_clone.as_deref().unwrap_or("unknown");
             memory_updater::maybe_update_task_memory(
                 tid, task_name, &user_msg, &ai_response, &memory, &api_client, &token_owned,
+            )
+            .await;
+
+            // Update task spec from conversation
+            crate::agent::spec_updater::update_task_spec(
+                tid, task_name, &user_msg, &ai_response,
+                &task_engine, &api_client, &token_owned,
             )
             .await;
         }
@@ -548,7 +573,7 @@ pub async fn agent_chat_stream(
     let _ = forward_task.await;
 
     persist_new_messages(&response, msg_count_before, &task_id, &session_id);
-    spawn_memory_update(&state.api_client, &token, &message, &response.content, &task_id, task_uuid);
+    spawn_memory_update(&state.api_client, &state.task_engine, &token, &message, &response.content, &task_id, task_uuid);
 
     Ok(response)
 }
@@ -575,7 +600,7 @@ pub async fn agent_chat(
         .map_err(|e| e.to_string())?;
 
     persist_new_messages(&response, msg_count_before, &task_id, &session_id);
-    spawn_memory_update(&state.api_client, &token, &message, &response.content, &task_id, task_uuid);
+    spawn_memory_update(&state.api_client, &state.task_engine, &token, &message, &response.content, &task_id, task_uuid);
 
     Ok(response)
 }

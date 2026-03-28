@@ -8,14 +8,15 @@ import * as tauri from "@/lib/tauri";
 function taskStatusLabel(s: TaskStatus): string {
   const map: Record<string, string> = {
     draft: "草稿",
-    planning: "规划中",
-    plan_ready: "计划就绪",
-    scheduled: "已排期",
-    running: "运行中",
+    exploring: "探索中",
+    configuring: "配置中",
+    testing: "测试中",
+    ready: "就绪",
+    active: "运行中",
+    running: "执行中",
     waiting_for_approval: "等待确认",
     paused: "已暂停",
-    succeeded: "已完成",
-    partially_succeeded: "部分完成",
+    completed: "已完成",
     failed: "失败",
     cancelled: "已取消",
   };
@@ -23,20 +24,19 @@ function taskStatusLabel(s: TaskStatus): string {
 }
 
 function statusClass(s: TaskStatus): string {
-  if (s === "running") return "admiral-chip admiral-chip-warning";
-  if (s === "succeeded") return "admiral-chip admiral-chip-success";
+  if (s === "running" || s === "testing") return "admiral-chip admiral-chip-warning";
+  if (s === "completed" || s === "ready") return "admiral-chip admiral-chip-success";
   if (s === "failed" || s === "cancelled") return "admiral-chip admiral-chip-danger";
-  if (s === "waiting_for_approval" || s === "partially_succeeded") return "admiral-chip admiral-chip-warning";
-  if (s === "scheduled" || s === "plan_ready") return "admiral-chip admiral-chip-primary";
+  if (s === "waiting_for_approval") return "admiral-chip admiral-chip-warning";
+  if (s === "active" || s === "configuring") return "admiral-chip admiral-chip-primary";
   return "admiral-chip";
 }
 
 function statusDotColor(s: TaskStatus): string {
-  if (s === "running" || s === "waiting_for_approval") return "var(--color-warning)";
-  if (s === "succeeded") return "var(--color-success)";
+  if (s === "running" || s === "testing" || s === "waiting_for_approval") return "var(--color-warning)";
+  if (s === "completed" || s === "ready") return "var(--color-success)";
   if (s === "failed" || s === "cancelled") return "var(--color-danger)";
-  if (s === "partially_succeeded") return "var(--color-warning)";
-  if (s === "scheduled" || s === "plan_ready") return "var(--color-primary)";
+  if (s === "active" || s === "configuring") return "var(--color-primary)";
   return "#9fb3c8";
 }
 
@@ -66,39 +66,39 @@ function getTransitions(status: TaskStatus, taskType: string): TransitionItem[] 
   const items: TransitionItem[] = [];
   switch (status) {
     case "draft":
-      items.push({ label: "开始规划", target: "planning" });
+      items.push({ label: "开始探索", target: "exploring" });
       break;
-    case "planning":
-      items.push({ label: "完成规划", target: "plan_ready" });
-      items.push({ label: "退回草稿", target: "draft" });
+    case "exploring":
+      items.push({ label: "进入配置", target: "configuring" });
       break;
-    case "plan_ready":
-      items.push({ label: "开始执行", target: "running" });
-      if (taskType !== "instant") items.push({ label: "加入排期", target: "scheduled" });
-      items.push({ label: "退回草稿", target: "draft" });
+    case "configuring":
+      items.push({ label: "开始试运行", target: "testing" });
       break;
-    case "scheduled":
-      items.push({ label: "立即执行", target: "running" });
+    case "ready":
+      if (taskType !== "instant") items.push({ label: "发布", target: "active" });
+      items.push({ label: "执行", target: "running" });
+      items.push({ label: "调整配置", target: "configuring" });
+      break;
+    case "active":
       items.push({ label: "暂停", target: "paused" });
+      items.push({ label: "调整配置", target: "configuring" });
       break;
     case "running":
       items.push({ label: "暂停", target: "paused" });
       break;
     case "paused":
-      items.push({ label: "继续执行", target: "running" });
-      if (taskType !== "instant") items.push({ label: "回到排期", target: "scheduled" });
-      break;
-    case "succeeded":
-      if (taskType !== "instant") items.push({ label: "重新排期", target: "scheduled" });
+      items.push({ label: "继续", target: "running" });
+      if (taskType !== "instant") items.push({ label: "恢复调度", target: "active" });
       break;
     case "failed":
-      items.push({ label: "重试", target: "plan_ready" });
+      items.push({ label: "重新配置", target: "configuring" });
       break;
-    case "partially_succeeded":
-      items.push({ label: "重试（全量）", target: "plan_ready" });
+    case "completed":
+      if (taskType !== "instant") items.push({ label: "重新调度", target: "active" });
+      items.push({ label: "调整配置", target: "configuring" });
       break;
     case "cancelled":
-      items.push({ label: "重新编辑", target: "draft" });
+      items.push({ label: "重新开始", target: "draft" });
       break;
   }
   return items;
@@ -439,13 +439,15 @@ export function TaskList() {
           aria-label="按状态筛选"
         >
           <option value="all">全部状态</option>
-          <option value="running">运行中</option>
-          <option value="waiting_for_approval">等待确认</option>
-          <option value="partially_succeeded">部分完成</option>
-          <option value="succeeded">已完成</option>
-          <option value="failed">失败</option>
-          <option value="scheduled">已排期</option>
           <option value="draft">草稿</option>
+          <option value="exploring">探索中</option>
+          <option value="configuring">配置中</option>
+          <option value="testing">测试中</option>
+          <option value="ready">就绪</option>
+          <option value="active">运行中</option>
+          <option value="running">执行中</option>
+          <option value="completed">已完成</option>
+          <option value="failed">失败</option>
           <option value="cancelled">已取消</option>
         </select>
       </div>

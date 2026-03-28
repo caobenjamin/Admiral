@@ -1,7 +1,7 @@
 //! SQLite data models and query helpers.
 
 use admiral_types::task::{
-    Task, TaskCategory, TaskRun, TaskStatus, TaskType,
+    CompletenessLevel, Task, TaskCategory, TaskRun, TaskStatus, TaskType,
     OperationPermission, PermissionScope, PendingApproval,
 };
 use chrono::{DateTime, Utc};
@@ -64,17 +64,20 @@ pub fn upsert_task(conn: &rusqlite::Connection, task: &Task) -> anyhow::Result<(
     let task_type_str = enum_to_str(&task.task_type);
     let status_str = enum_to_str(&task.status);
     let category_str = enum_to_str(&task.task_category);
+    let completeness_str = enum_to_str(&task.completeness);
     conn.execute(
         r#"
         INSERT INTO tasks (id, name, description, task_type, status, plan, platform, account_ids,
-            trigger_type, cron_expression, heartbeat_condition, next_run_at, created_at, updated_at, task_category)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            trigger_type, cron_expression, heartbeat_condition, next_run_at, created_at, updated_at,
+            task_category, completeness)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
         ON CONFLICT(id) DO UPDATE SET
             name=excluded.name, description=excluded.description, task_type=excluded.task_type,
             status=excluded.status, plan=excluded.plan, platform=excluded.platform,
             account_ids=excluded.account_ids, trigger_type=excluded.trigger_type,
             cron_expression=excluded.cron_expression, heartbeat_condition=excluded.heartbeat_condition,
-            next_run_at=excluded.next_run_at, updated_at=excluded.updated_at, task_category=excluded.task_category
+            next_run_at=excluded.next_run_at, updated_at=excluded.updated_at,
+            task_category=excluded.task_category, completeness=excluded.completeness
         "#,
         params![
             task.id.to_string(),
@@ -92,15 +95,18 @@ pub fn upsert_task(conn: &rusqlite::Connection, task: &Task) -> anyhow::Result<(
             task.created_at.to_rfc3339(),
             task.updated_at.to_rfc3339(),
             category_str,
+            completeness_str,
         ],
     )?;
     Ok(())
 }
 
+const TASK_SELECT_COLS: &str = "id, name, description, task_type, status, plan, platform, account_ids, trigger_type, cron_expression, heartbeat_condition, next_run_at, created_at, updated_at, task_category, completeness";
+
 /// Load a task by id.
 pub fn get_task(conn: &rusqlite::Connection, id: Uuid) -> anyhow::Result<Option<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, description, task_type, status, plan, platform, account_ids, trigger_type, cron_expression, heartbeat_condition, next_run_at, created_at, updated_at, task_category FROM tasks WHERE id = ?1",
+        &format!("SELECT {} FROM tasks WHERE id = ?1", TASK_SELECT_COLS),
     )?;
     let mut rows = stmt.query(params![id.to_string()])?;
     let row = match rows.next()? {
@@ -116,7 +122,7 @@ pub fn list_tasks(
     conn: &rusqlite::Connection,
     status_filter: Option<TaskStatus>,
 ) -> anyhow::Result<Vec<Task>> {
-    let sql = "SELECT id, name, description, task_type, status, plan, platform, account_ids, trigger_type, cron_expression, heartbeat_condition, next_run_at, created_at, updated_at, task_category FROM tasks";
+    let sql = format!("SELECT {} FROM tasks", TASK_SELECT_COLS);
     let out: Vec<Task> = match status_filter {
         Some(s) => {
             let status_str = enum_to_str(&s);
@@ -126,7 +132,7 @@ pub fn list_tasks(
                 .collect()
         }
         None => {
-            let mut stmt = conn.prepare(sql)?;
+            let mut stmt = conn.prepare(&sql)?;
             stmt.query_map([], row_to_task)?
                 .filter_map(|r| r.ok())
                 .collect()
@@ -135,10 +141,10 @@ pub fn list_tasks(
     Ok(out)
 }
 
-/// List tasks that are heartbeat type and scheduled (for heartbeat runner).
+/// List tasks that are heartbeat type and active (for heartbeat runner).
 pub fn list_heartbeat_tasks(conn: &rusqlite::Connection) -> anyhow::Result<Vec<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, description, task_type, status, plan, platform, account_ids, trigger_type, cron_expression, heartbeat_condition, next_run_at, created_at, updated_at, task_category FROM tasks WHERE task_type = 'heartbeat' AND status = 'scheduled'",
+        &format!("SELECT {} FROM tasks WHERE task_type = 'heartbeat' AND status = 'active'", TASK_SELECT_COLS),
     )?;
     let out: Vec<Task> = stmt
         .query_map([], row_to_task)?
@@ -147,10 +153,10 @@ pub fn list_heartbeat_tasks(conn: &rusqlite::Connection) -> anyhow::Result<Vec<T
     Ok(out)
 }
 
-/// List tasks that are cron type and scheduled (for cron scheduler).
+/// List tasks that are cron type and active (for cron scheduler).
 pub fn list_cron_tasks(conn: &rusqlite::Connection) -> anyhow::Result<Vec<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, description, task_type, status, plan, platform, account_ids, trigger_type, cron_expression, heartbeat_condition, next_run_at, created_at, updated_at, task_category FROM tasks WHERE task_type = 'cron' AND status = 'scheduled'",
+        &format!("SELECT {} FROM tasks WHERE task_type = 'cron' AND status = 'active'", TASK_SELECT_COLS),
     )?;
     let out: Vec<Task> = stmt
         .query_map([], row_to_task)?
@@ -175,10 +181,12 @@ fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
     let created_at_str: String = row.get(12)?;
     let updated_at_str: String = row.get(13)?;
     let category_str: String = row.get(14).unwrap_or_else(|_| "mixed".to_string());
+    let completeness_str: String = row.get(15).unwrap_or_else(|_| "incomplete".to_string());
 
     let task_type: TaskType = enum_from_str(&task_type_str, TaskType::Instant);
     let status: TaskStatus = enum_from_str(&status_str, TaskStatus::Draft);
     let task_category: TaskCategory = enum_from_str(&category_str, TaskCategory::Mixed);
+    let completeness: CompletenessLevel = enum_from_str(&completeness_str, CompletenessLevel::Incomplete);
     let plan = plan_json.and_then(|s| serde_json::from_str(&s).ok());
     let account_ids: Vec<i64> = serde_json::from_str(&account_ids_json).unwrap_or_default();
     let next_run_at = next_run_at_str.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|t| t.with_timezone(&Utc)));
@@ -192,6 +200,7 @@ fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
         task_type,
         task_category,
         status,
+        completeness,
         plan,
         platform,
         account_ids,

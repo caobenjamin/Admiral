@@ -49,6 +49,8 @@ fn main() {
             tauri_bridge::permission_revoke,
             tauri_bridge::task_transition,
             tauri_bridge::task_load_conversations,
+            tauri_bridge::task_load_spec,
+            tauri_bridge::task_list_run_reports,
             tauri_bridge::agent_chat,
             tauri_bridge::agent_chat_stream,
         ])

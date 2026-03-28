@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import * as tauri from "@/lib/tauri";
-import type { Task, TaskStatus, TaskCategory } from "@/lib/types";
+import type { Task, TaskStatus, TaskCategory, CompletenessLevel } from "@/lib/types";
 
 export type { TaskStatus } from "@/lib/types";
 
@@ -8,6 +8,7 @@ export interface TaskMeta {
   id: string;
   name: string;
   status: TaskStatus;
+  completeness: CompletenessLevel;
   task_category: TaskCategory;
   type: "instant" | "scheduled" | "heartbeat";
   updated_at: string;
@@ -20,6 +21,7 @@ function taskToMeta(t: Task): TaskMeta {
     id: t.id,
     name: t.name,
     status: t.status,
+    completeness: t.completeness ?? "incomplete",
     task_category: t.task_category,
     type,
     updated_at: t.updated_at,

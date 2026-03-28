@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { useAuth } from "@/hooks/useAuth";
 import { useAgent } from "@/hooks/useAgent";
 import { useUiStore } from "@/stores/uiStore";
-import { useTaskStore } from "@/stores/taskStore";
+import { useTaskStore, type TaskMeta } from "@/stores/taskStore";
 import { TaskDetail } from "@/components/task/TaskDetail";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageBubble, type ChatMessage } from "@/components/chat/MessageBubble";
@@ -28,7 +28,26 @@ function sessionMessagesToChatMessages(
     });
 }
 
-const QUICK_ACTIONS = ["查询今日投放概览", "继续执行当前任务", "导出本次结果摘要"];
+function getQuickActions(task: TaskMeta | null): string[] {
+  if (!task) return [];
+  switch (task.status) {
+    case "draft":
+    case "exploring":
+      return ["描述这个任务的目标", "我想查询广告报表", "需要批量调价"];
+    case "configuring":
+      return ["开始试运行", "查看当前任务配置", "修改执行计划"];
+    case "testing":
+    case "ready":
+      return ["查看试运行报告", "发布任务", "调整配置"];
+    case "active":
+    case "completed":
+      return ["查看最近执行报告", "调整任务配置", "暂停任务"];
+    case "failed":
+      return ["查看失败原因", "重新配置", "重试"];
+    default:
+      return ["查看任务状态"];
+  }
+}
 
 export function HomePage() {
   const user = useAuthStore((s) => s.user);
@@ -36,6 +55,10 @@ export function HomePage() {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const { fetchTasks } = useTaskStore();
   const navigate = useNavigate();
+
+  const tasks = useTaskStore((s) => s.tasks);
+  const currentTask = useMemo(() => (selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null), [selectedTaskId, tasks]);
+  const quickActions = useMemo(() => getQuickActions(currentTask), [currentTask]);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [showTaskDetail, setShowTaskDetail] = useState(true);
@@ -66,7 +89,7 @@ export function HomePage() {
         return prev;
       });
     },
-    onToolResult(name, success) {
+    onToolResult(_name, success) {
       const msgId = streamingMsgIdRef.current;
       if (!msgId) return;
       setMessages((prev) => {
@@ -177,9 +200,16 @@ export function HomePage() {
             <div>
               <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: "var(--admiral-text-primary)" }}>Agent 对话</h3>
               <p style={{ fontSize: 12, color: "var(--admiral-text-secondary)", margin: "3px 0 0" }}>
-                {noTask ? "请先在左侧选择或创建任务" : "与 AI 对话管理当前任务"}
+                {noTask ? "请先在左侧选择或创建任务" : "与 AI 对话定义和管理任务"}
               </p>
             </div>
+            {currentTask && currentTask.completeness !== "complete" && (
+              <span style={{ fontSize: 12, color: "var(--admiral-text-placeholder)" }}>
+                {currentTask.completeness === "incomplete" && "请描述任务目标..."}
+                {currentTask.completeness === "partial" && "继续补充信息..."}
+                {currentTask.completeness === "sufficient" && "信息基本完整，可试运行"}
+              </span>
+            )}
             {selectedTaskId && <span className="admiral-chip admiral-chip-primary">实时会话</span>}
           </div>
 
@@ -201,9 +231,14 @@ export function HomePage() {
             ) : messages.length > 0 ? (
               messages.map((m) => <MessageBubble key={m.id} message={m} />)
             ) : (
-              <p style={{ margin: "28px 0", fontSize: 13, color: "var(--admiral-text-placeholder)", textAlign: "center" }}>
-                暂无对话。在下方输入框发送消息开始。
-              </p>
+              <div style={{ margin: "28px 16px", textAlign: "center" }}>
+                <p style={{ fontSize: 14, color: "var(--admiral-text-secondary)", margin: "0 0 8px" }}>
+                  告诉我这个任务想要做什么吧
+                </p>
+                <p style={{ fontSize: 12, color: "var(--admiral-text-placeholder)", margin: 0 }}>
+                  你可以描述任务目标，系统会引导你逐步完善配置
+                </p>
+              </div>
             )}
           </div>
 
@@ -228,7 +263,7 @@ export function HomePage() {
           placeholder={noTask ? "请先选择任务..." : "输入指令或描述任务..."}
           disabled={loading || noTask}
           loading={loading}
-          quickActions={noTask ? [] : QUICK_ACTIONS}
+          quickActions={quickActions}
         />
       </div>
     </div>

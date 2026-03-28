@@ -1,7 +1,7 @@
 //! Task engine: orchestrates task lifecycle, state transitions, persistence.
 
 use admiral_types::task::{
-    Task, TaskCategory, TaskStatus, TaskType, TaskTrigger, TaskProgress,
+    CompletenessLevel, Task, TaskCategory, TaskStatus, TaskType, TaskTrigger, TaskProgress,
     RunType, RunStatus,
 };
 use chrono::Utc;
@@ -12,6 +12,7 @@ use uuid::Uuid;
 use crate::db;
 use crate::task::state_machine;
 use crate::task::executor;
+use crate::task::spec::{self, TaskSpec};
 
 /// Task engine: load/save tasks, run state machine, trigger execution.
 pub struct TaskEngine {
@@ -41,11 +42,12 @@ impl TaskEngine {
         let now = Utc::now();
         let task = Task {
             id,
-            name,
+            name: name.clone(),
             description,
             task_type,
             task_category,
             status: TaskStatus::Draft,
+            completeness: CompletenessLevel::Incomplete,
             plan: None,
             platform: "bilibili".to_string(),
             account_ids: Vec::new(),
@@ -58,6 +60,10 @@ impl TaskEngine {
             updated_at: now,
         };
         self.save_task(&task)?;
+
+        let initial_spec = TaskSpec::default();
+        let _ = spec::save_spec(id, &name, &initial_spec);
+
         Ok(task)
     }
 
@@ -95,15 +101,28 @@ impl TaskEngine {
         Ok(())
     }
 
+    /// Update completeness level on a task and persist.
+    pub fn set_completeness(&self, task: &mut Task, level: CompletenessLevel) -> anyhow::Result<()> {
+        task.completeness = level;
+        task.updated_at = Utc::now();
+        self.save_task(task)
+    }
+
     /// Map RunStatus to the appropriate TaskStatus, considering task_type for re-scheduling.
-    fn run_status_to_task_status(&self, run_status: &RunStatus, task_type: TaskType) -> TaskStatus {
+    fn run_status_to_task_status(&self, run_status: &RunStatus, task_type: TaskType, was_testing: bool) -> TaskStatus {
         match run_status {
-            RunStatus::Succeeded => match task_type {
-                TaskType::Cron | TaskType::Heartbeat => TaskStatus::Scheduled,
-                TaskType::Instant => TaskStatus::Succeeded,
-            },
+            RunStatus::Succeeded => {
+                if was_testing {
+                    TaskStatus::Ready
+                } else {
+                    match task_type {
+                        TaskType::Cron | TaskType::Heartbeat => TaskStatus::Active,
+                        TaskType::Instant => TaskStatus::Completed,
+                    }
+                }
+            }
             RunStatus::Failed => TaskStatus::Failed,
-            RunStatus::PartiallySucceeded => TaskStatus::PartiallySucceeded,
+            RunStatus::PartiallySucceeded => TaskStatus::Failed,
             RunStatus::WaitingForApproval => TaskStatus::WaitingForApproval,
             RunStatus::Cancelled => TaskStatus::Cancelled,
             RunStatus::Running => TaskStatus::Running,
@@ -120,15 +139,16 @@ impl TaskEngine {
         progress_tx: Option<mpsc::Sender<TaskProgress>>,
     ) -> anyhow::Result<admiral_types::task::TaskRun> {
         let is_dry_run = run_type == RunType::DryRun;
+        let was_testing = task.status == TaskStatus::Testing;
 
         if !is_dry_run && task.status != TaskStatus::Running {
             self.transition_to(task, TaskStatus::Running)?;
         }
 
-        self.execute_and_finalize(task, run_type, None, access_token, progress_tx, is_dry_run).await
+        self.execute_and_finalize(task, run_type, None, access_token, progress_tx, is_dry_run, was_testing).await
     }
 
-    /// Resume a previously partially-succeeded task from a specific step.
+    /// Resume a previously failed task from a specific step.
     pub async fn resume_run(
         &self,
         task: &mut Task,
@@ -137,8 +157,9 @@ impl TaskEngine {
         access_token: Option<&str>,
         progress_tx: Option<mpsc::Sender<TaskProgress>>,
     ) -> anyhow::Result<admiral_types::task::TaskRun> {
+        let was_testing = task.status == TaskStatus::Testing;
         self.transition_to(task, TaskStatus::Running)?;
-        self.execute_and_finalize(task, run_type, from_step, access_token, progress_tx, false).await
+        self.execute_and_finalize(task, run_type, from_step, access_token, progress_tx, false, was_testing).await
     }
 
     /// Shared execution + post-run lifecycle: persist TaskRun and transition status.
@@ -150,6 +171,7 @@ impl TaskEngine {
         access_token: Option<&str>,
         progress_tx: Option<mpsc::Sender<TaskProgress>>,
         is_dry_run: bool,
+        was_testing: bool,
     ) -> anyhow::Result<admiral_types::task::TaskRun> {
         let run = match executor::execute_plan_from_step(
             task,
@@ -179,9 +201,20 @@ impl TaskEngine {
             return Ok(run);
         }
 
-        let new_status = self.run_status_to_task_status(&run.status, task.task_type);
+        let new_status = self.run_status_to_task_status(&run.status, task.task_type, was_testing);
         if task.status != new_status {
             self.transition_to(task, new_status)?;
+        }
+
+        // Generate and save execution report
+        let _ = crate::task::report::save_report(task.id, &task.name, &run);
+
+        // Promote completeness after successful test run
+        if was_testing && run.status == RunStatus::Succeeded {
+            let new_level = crate::task::completeness::promote_after_test_run(task.completeness);
+            if new_level != task.completeness {
+                let _ = self.set_completeness(task, new_level);
+            }
         }
 
         Ok(run)

@@ -29,22 +29,38 @@ pub enum TaskCategory {
     Mixed,
 }
 
-/// Task lifecycle status.
+/// Task lifecycle status (conversation-driven model).
+///
+/// Lifecycle states: Draft → Exploring → Configuring → Testing → Ready → Active
+/// Execution states: Running, WaitingForApproval (transient during a run)
+/// Terminal/pause:   Completed, Failed, Paused, Cancelled
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
     #[default]
     Draft,
-    Planning,
-    PlanReady,
-    Scheduled,
+    Exploring,
+    Configuring,
+    Testing,
+    Ready,
+    Active,
     Running,
     WaitingForApproval,
     Paused,
-    Succeeded,
-    PartiallySucceeded,
+    Completed,
     Failed,
     Cancelled,
+}
+
+/// How complete the task specification is (evaluated by rules + LLM).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompletenessLevel {
+    #[default]
+    Incomplete,
+    Partial,
+    Sufficient,
+    Complete,
 }
 
 /// Trigger configuration (cron expression, heartbeat condition, next run time).
@@ -172,6 +188,8 @@ pub struct Task {
     pub task_type: TaskType,
     pub task_category: TaskCategory,
     pub status: TaskStatus,
+    #[serde(default)]
+    pub completeness: CompletenessLevel,
     #[serde(default)]
     pub plan: Option<TaskPlan>,
     #[serde(default)]

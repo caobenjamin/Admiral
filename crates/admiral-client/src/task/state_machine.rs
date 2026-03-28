@@ -1,9 +1,13 @@
-//! Task state machine: validates lifecycle transitions.
+//! Task state machine: validates lifecycle transitions for conversation-driven model.
 //!
 //! ```text
-//! Draft → Planning → PlanReady → Running / Scheduled
-//!                                  ↓
-//!               Succeeded / Failed / PartiallySucceeded / WaitingForApproval / Paused
+//! Draft → Exploring → Configuring → Testing → Ready → Active
+//!                          ↑            |                |
+//!                          └────────────┘                |
+//!                          ↑                             |
+//!                          └─────────────────────────────┘
+//! Execution: Running ↔ WaitingForApproval
+//! Terminal:  Completed, Failed, Paused, Cancelled
 //! ```
 
 use admiral_types::task::{TaskStatus, TaskType};
@@ -13,46 +17,54 @@ pub fn can_transition(from: TaskStatus, to: TaskStatus, task_type: TaskType) -> 
     use TaskStatus::*;
 
     match (from, to) {
-        // Draft phase
-        (Draft, Planning) => true,
-        (Draft, PlanReady) => true,
+        // Lifecycle progression (conversation-driven)
+        (Draft, Exploring) => true,
+        (Exploring, Configuring) => true,
+        (Configuring, Testing) => true,
+        (Testing, Ready) => true,
+        (Ready, Active) => matches!(task_type, TaskType::Cron | TaskType::Heartbeat),
 
-        // Planning phase
-        (Planning, PlanReady) => true,
-        (Planning, Draft) => true,
+        // Backward transitions (refine after test or adjust active task)
+        (Testing, Configuring) => true,
+        (Ready, Configuring) => true,
+        (Active, Configuring) => true,
+        (Failed, Configuring) => true,
+        (Completed, Configuring) => true,
 
-        // PlanReady → execution
-        (PlanReady, Running) => true,
-        (PlanReady, Scheduled) => matches!(task_type, TaskType::Cron | TaskType::Heartbeat),
-        (PlanReady, Draft) => true,
+        // Skip steps when Agent determines sufficient info
+        (Draft, Configuring) => true,
+        (Exploring, Testing) => true,
 
-        // Scheduled (cron / heartbeat)
-        (Scheduled, Running) => true,
-        (Scheduled, Paused) => true,
-
-        // Running outcomes
-        (Running, Succeeded) => true,
-        (Running, Failed) => true,
-        (Running, PartiallySucceeded) => true,
+        // Execution transitions (transient during a run)
+        (Testing, Running) => true,
+        (Ready, Running) => true,
+        (Active, Running) => true,
         (Running, WaitingForApproval) => true,
-        (Running, Paused) => true,
-
-        // WaitingForApproval
         (WaitingForApproval, Running) => true,
-        (WaitingForApproval, Cancelled) => true,
 
-        // PartiallySucceeded recovery (user chooses in the UI)
-        (PartiallySucceeded, Running) => true,
-        (PartiallySucceeded, PlanReady) => true,
+        // Run outcomes
+        (Running, Completed) => true,
+        (Running, Failed) => true,
+        (Running, Testing) => true,
+        (Running, Active) => matches!(task_type, TaskType::Cron | TaskType::Heartbeat),
+        (Running, Ready) => true,
 
-        // Paused
+        // Pause/resume
+        (Active, Paused) => true,
+        (Running, Paused) => true,
+        (Paused, Active) => matches!(task_type, TaskType::Cron | TaskType::Heartbeat),
         (Paused, Running) => true,
-        (Paused, Scheduled) => matches!(task_type, TaskType::Cron | TaskType::Heartbeat),
+        (Paused, Configuring) => true,
 
-        // Terminal → retry / re-schedule
-        (Succeeded, Scheduled) => matches!(task_type, TaskType::Cron | TaskType::Heartbeat),
-        (Failed, PlanReady) => true,
+        // Cancel from most states
+        (WaitingForApproval, Cancelled) => true,
+        (Paused, Cancelled) => true,
+        (Failed, Cancelled) => true,
         (Cancelled, Draft) => true,
+
+        // Re-activate after completion (cron/heartbeat)
+        (Completed, Active) => matches!(task_type, TaskType::Cron | TaskType::Heartbeat),
+        (Completed, Ready) => true,
 
         _ => false,
     }

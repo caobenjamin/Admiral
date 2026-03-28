@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use std::path::Path;
 use tracing::info;
 
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
 
 /// Run all migrations. Creates DB file and tables if they don't exist.
 pub fn run_migrations(db_path: &Path) -> anyhow::Result<()> {
@@ -20,6 +20,9 @@ pub fn run_migrations(db_path: &Path) -> anyhow::Result<()> {
     }
     if current <= 1 {
         migrate_v1_to_v2(&conn)?;
+    }
+    if current <= 2 {
+        migrate_v2_to_v3(&conn)?;
     }
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     Ok(())
@@ -191,5 +194,37 @@ fn migrate_v1_to_v2(conn: &Connection) -> anyhow::Result<()> {
     }
 
     info!("SQLite schema migrated to v2");
+    Ok(())
+}
+
+fn migrate_v2_to_v3(conn: &Connection) -> anyhow::Result<()> {
+    let add_cols = [
+        "ALTER TABLE tasks ADD COLUMN completeness TEXT DEFAULT 'incomplete'",
+        "ALTER TABLE tasks ADD COLUMN spec_version INTEGER DEFAULT 0",
+    ];
+    for sql in &add_cols {
+        if let Err(e) = conn.execute(sql, []) {
+            if !e.to_string().contains("duplicate column") {
+                return Err(e.into());
+            }
+        }
+    }
+
+    // Map old status values to the new conversation-driven statuses
+    let status_migrations = [
+        ("planning", "exploring"),
+        ("plan_ready", "configuring"),
+        ("scheduled", "active"),
+        ("succeeded", "completed"),
+        ("partially_succeeded", "failed"),
+    ];
+    for (old, new) in &status_migrations {
+        conn.execute(
+            "UPDATE tasks SET status = ?1 WHERE status = ?2",
+            rusqlite::params![new, old],
+        )?;
+    }
+
+    info!("SQLite schema migrated to v3 (conversation-driven task statuses)");
     Ok(())
 }

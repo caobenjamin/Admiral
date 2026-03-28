@@ -1,0 +1,20 @@
+[skill]
+id = "semantic.task_plan_generator"
+name = "任务计划生成器"
+category = "semantic"
+version = "1.0.0"
+
+[skill.description]
+short = "根据任务规格文档自动生成可执行的 TaskPlan"
+long = """
+读取 TASK_SPEC.md 中的目标、上下文、实现路径信息，
+结合可用的 skills 列表，自动生成结构化的 TaskPlan JSON。
+用于试运行前和正式运行前自动构建执行计划。
+"""
+
+[skill.risk]
+level = "low"
+requires_dry_run = false
+requires_test_run = false
+requires_user_confirm = false
+is_reversible = true

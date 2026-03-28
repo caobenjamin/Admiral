@@ -220,6 +220,14 @@ export async function taskLoadConversations(taskId: string): Promise<Conversatio
   return invoke("task_load_conversations", { taskId });
 }
 
+export async function taskLoadSpec(taskId: string): Promise<string> {
+  return invoke("task_load_spec", { taskId });
+}
+
+export async function taskListRunReports(taskId: string): Promise<string[]> {
+  return invoke("task_list_run_reports", { taskId });
+}
+
 // ---------- Agent ----------
 export async function agentChat(
   message: string,

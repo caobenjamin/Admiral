@@ -84,11 +84,12 @@ admiral/
 ```
 src/
 ├── agent/          # Agent 运行时
-│   ├── profile     # Agent 人格配置
-│   ├── context     # 上下文组装（System + Memory + Knowledge + History）
+│   ├── profile     # Agent 人格配置（含对话驱动策略）
+│   ├── context     # 上下文组装（System + Memory + TaskSpec + Knowledge + History）
 │   ├── runtime     # ReAct 循环 + SSE 流式解析
 │   ├── memory      # 记忆系统（Markdown + SQLite FTS5）
-│   └── memory_updater  # 对话后自动记忆提取
+│   ├── memory_updater  # 对话后自动记忆提取
+│   └── spec_updater    # 对话后自动更新任务规格 (TASK_SPEC.md)
 ├── skill/          # Skill 工具体系
 │   ├── loader      # 从 skills/ 目录加载 skill.toml
 │   ├── registry    # 技能注册表与 LLM tools 生成
@@ -98,7 +99,10 @@ src/
 │   ├── engine      # 任务生命周期管理与持久化
 │   ├── executor    # 计划执行器（StepContext、ForEach、条件、重试）
 │   ├── scheduler   # Heartbeat / Cron 定时调度
-│   └── state_machine  # 状态机校验
+│   ├── state_machine  # 对话驱动状态机
+│   ├── spec        # 任务规格文档 (TaskSpec ↔ Markdown)
+│   ├── completeness  # 完整度评估引擎
+│   └── report      # 执行报告生成（Markdown）
 ├── commands/       # Tauri 业务命令（auth、oauth、mapi、llm、task）
 ├── network/        # REST 客户端（api_client）
 ├── db/             # SQLite 迁移与数据访问
@@ -124,43 +128,62 @@ ui/src/
 
 ---
 
-## 任务执行引擎
+## 对话驱动任务系统
 
-任务引擎是 Admiral 的核心，支持多步骤计划的自动执行。
+Admiral 的任务系统采用**对话驱动**模式：用户只需提供最少信息创建任务（名称 + 触发类型），随后通过持续对话逐步明确目标，系统自动评估信息完整度并推进生命周期。
 
-### 执行流程
+### 核心理念
+
+- **极简创建**：创建任务只需名称 + 选择手动/定时，不需要填写复杂表单
+- **引导对话**：系统主动提问，帮助用户逐步定义任务目标和实现路径
+- **规格沉淀**：每个任务维护一份 `TASK_SPEC.md`，记录目标、上下文、步骤、参数、运行历史，防止 LLM 失忆
+- **完整度评估**：系统持续评估信息完整度（Incomplete → Partial → Sufficient → Complete），自动推进状态
+- **试运行验证**：信息足够时建议试运行，根据结果继续完善配置
+- **执行报告**：每次执行生成结构化 Markdown 报告
+
+### 任务生命周期
 
 ```
-Task → TaskPlan → [Step 1] → [Step 2] → ... → TaskRun
-                      ↓
-              StepContext（跨步数据传递）
+Draft → Exploring → Configuring → Testing → Ready → Active
+             (引导对话)    (细化配置)   (试运行)  (可发布)  (定时运行)
+                              ↑            |              |
+                              └────────────┘              |
+                              ↑                           |
+                              └───────────────────────────┘
 ```
 
-### 关键特性
+| 状态 | 说明 |
+|------|------|
+| **Draft** | 刚创建，仅有名称和触发类型 |
+| **Exploring** | 系统通过对话收集任务目标和需求 |
+| **Configuring** | 信息基本明确，细化配置和实现路径 |
+| **Testing** | 进行试运行验证配置 |
+| **Ready** | 试运行通过，可发布/调度 |
+| **Active** | 已发布，定时任务运行中 |
+
+### 任务规格文档 (TASK_SPEC.md)
+
+每个任务在 `~/.admiral/memory/tasks/{uuid}/` 下维护规格文档，结构包括：
+
+- **目标** — 从对话中提取的任务目标
+- **上下文** — 平台、关联账户、触发方式
+- **实现路径** — 有序步骤，每步关联技能和参数
+- **信息完整度评估** — 检查清单（已确认/待确认）
+- **运行历史摘要** — 每次执行的结果记录
+
+### 执行引擎
 
 | 特性 | 说明 |
 |------|------|
-| **三阶段执行** | DryRun（验证）→ TestRun（单步试运行）→ Production（全量执行） |
-| **StepContext 数据管道** | 步骤输出通过 `output_key` 存入上下文，后续步骤通过 `param_bindings` 引用（如 `$.step_1.records[0].account_id`） |
-| **ForEach 批量执行** | 步骤可配置 `StepMode::ForEach`，对上下文中的列表并发执行，支持 `max_concurrency` 控制 |
-| **条件执行** | 步骤可设置 `condition`（如 `$.step_2.total > 1000`），不满足时按 `on_condition_false` 跳过或失败 |
-| **指数退避重试** | 步骤可配置 `RetryPolicy`（max_retries、backoff_ms、backoff_multiplier） |
+| **三阶段执行** | DryRun（验证）→ TestRun（试运行）→ Production（正式执行） |
+| **StepContext 数据管道** | 步骤输出通过 `output_key` 存入上下文，后续步骤通过 `param_bindings` 引用 |
+| **ForEach 批量执行** | 对列表并发执行，支持 `max_concurrency` 控制 |
+| **条件执行** | 步骤可设置条件表达式，不满足时跳过或失败 |
+| **指数退避重试** | 可配置 `RetryPolicy`（max_retries、backoff_ms、backoff_multiplier） |
 | **操作权限审批** | 写操作自动检查权限白名单，未授权时暂停等待用户审批 |
-| **实时进度事件** | 执行过程通过 `TaskProgress` 事件（StepStarted、StepCompleted、BatchProgress 等）推送到前端 |
-| **MAPI 速率限制** | per-account 的 governor 速率限制器（默认 10 req/s），防止触发平台限流 |
-| **定时调度** | Scheduler 每 30s 检查 Heartbeat / Cron 任务，到时间自动触发执行 |
-
-### 任务状态机
-
-```
-Draft → Planning → PlanReady → Scheduled → Running → Succeeded
-                                    ↓           ↓
-                              WaitingForApproval  PartiallySucceeded
-                                    ↓           ↓
-                                  Paused      Failed → Cancelled
-```
-
-Cron / Heartbeat 类型任务在成功后自动回到 `Scheduled` 状态等待下次触发。
+| **实时进度事件** | `TaskProgress` 事件推送到前端 |
+| **执行报告** | 每次执行后自动生成 Markdown 报告并持久化 |
+| **定时调度** | Scheduler 每 30s 检查 Active 状态的 Cron/Heartbeat 任务 |
 
 ---
 
@@ -171,12 +194,15 @@ Agent 基于 ReAct 循环与 LLM function calling 实现自然语言到操作的
 **执行流程：**
 
 1. 用户消息 → Knowledge RAG 检索相关知识片段
-2. Context 组装：System Prompt + User Memory + Task Memory + Knowledge + 历史对话
-3. LLM 生成回复（支持流式 SSE）
+2. Context 组装：System Prompt + User Memory + **Task Spec** + Knowledge + 历史对话 + 完整度评估
+3. LLM 生成回复（支持流式 SSE），包含对话驱动策略和新任务引导
 4. 若包含 `tool_calls` → Skill Executor 执行 → 结果回传 → 继续循环
-5. 对话结束后异步提取记忆更新
+5. 对话结束后异步执行：
+   - 记忆提取更新（User Memory + Task Memory）
+   - **任务规格更新**（从对话中提取结构化信息，合并到 TASK_SPEC.md）
+   - **完整度评估**（规则引擎检查，自动推进任务状态）
 
-**记忆系统：** `~/.admiral/memory/` 下按用户 / 每日 / 任务维度存储 Markdown，辅以 SQLite FTS5 搜索。
+**记忆系统：** `~/.admiral/memory/` 下按用户 / 每日 / 任务维度存储 Markdown，辅以 SQLite FTS5 搜索。每个任务额外维护 `TASK_SPEC.md`（规格文档）和 `runs/{run_id}.md`（执行报告）。
 
 ---
 
@@ -238,8 +264,9 @@ Tauri 会自动构建前端并启动桌面窗口。凭证文件与本地数据�
 | 管理端 | 邀请码、用户权益管理 | 已完成 |
 | 客户端联调 | 类型共享、API 客户端、Tauri 桥接、基础 UI | 已完成 |
 | UI 设计 | Element Plus 风格设计系统、布局重设计 | 已完成 |
-| **任务系统** | Agent Runtime、Skill 体系、任务引擎（含状态机、StepContext、ForEach、条件执行、重试、进度事件）、Knowledge RAG、定时调度 | 已完成 |
+| **任务系统 v1** | Agent Runtime、Skill 体系、任务引擎（含状态机、StepContext、ForEach、条件执行、重试、进度事件）、Knowledge RAG、定时调度 | 已完成 |
 | 流式对话 | LLM 端到端 SSE 流式交互 | 已完成 |
+| **对话驱动任务系统 v2** | 重构为对话驱动模式：极简创建 → 引导对话 → TASK_SPEC.md 规格沉淀 → 完整度评估 → 试运行 → 执行报告。新增 spec_updater、completeness、report 模块。前端简化创建流程，任务详情增加规格/历史标签页 | 已完成 |
 | 下一步 | WebSocket 通知、日志闭环、Heartbeat 配置 UI、cron 表达式解析 | 规划中 |
 
 ## 文档

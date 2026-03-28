@@ -1,8 +1,10 @@
-//! Context assembler: agent profile + session history + memory + available skills.
+//! Context assembler: agent profile + session history + memory + task spec + available skills.
 
 use crate::agent::memory::MemoryStore;
 use crate::agent::profile::AgentProfile;
 use crate::skill::registry::SkillRegistry;
+use crate::task::completeness;
+use crate::task::spec;
 use chrono::Local;
 use serde_json::json;
 use std::sync::Arc;
@@ -46,7 +48,7 @@ pub struct Session {
     pub messages: Vec<Message>,
 }
 
-/// Builds the full message list for an LLM call: system + user memory + task memory + tools + history + current input.
+/// Builds the full message list for an LLM call: system + user memory + task spec + tools + history.
 pub struct ContextAssembler {
     pub profile: AgentProfile,
     pub memory: MemoryStore,
@@ -89,12 +91,47 @@ impl ContextAssembler {
             }
         }
 
+        // Inject task spec and completeness context
         if let Some(ref task_id) = session.task_id {
             if let Ok(task_mem) = self.memory.load_task_memory(*task_id) {
                 if !task_mem.is_empty() {
                     system_parts.push(format!("## Task Memory\n\n{}", task_mem));
                 }
             }
+
+            let task_spec = spec::load_spec(*task_id);
+            let spec_md = self.memory.load_task_spec(*task_id).unwrap_or_default();
+            if !spec_md.is_empty() {
+                system_parts.push(format!("## 当前任务规格文档\n\n{}", spec_md));
+            }
+
+            let level = completeness::evaluate(&task_spec);
+            let missing = completeness::missing_items(&task_spec);
+            let level_label = match level {
+                admiral_types::task::CompletenessLevel::Incomplete => "不完整",
+                admiral_types::task::CompletenessLevel::Partial => "部分完整",
+                admiral_types::task::CompletenessLevel::Sufficient => "基本完整",
+                admiral_types::task::CompletenessLevel::Complete => "完整",
+            };
+
+            let mut completeness_section = format!(
+                "## 任务信息完整度\n\n当前完整度：**{}**\n",
+                level_label
+            );
+            if !missing.is_empty() {
+                completeness_section.push_str("\n缺失信息：\n");
+                for item in &missing {
+                    completeness_section.push_str(&format!("- {}\n", item));
+                }
+            }
+            completeness_section.push_str(
+                "\n**指引**：\n\
+                 - 根据用户描述，逐步完善任务规格\n\
+                 - 主动询问上述缺失的关键信息\n\
+                 - 当完整度达到「基本完整」时，建议用户进行试运行\n\
+                 - 每次对话都要帮助推进任务配置\n"
+            );
+            system_parts.push(completeness_section);
         }
 
         if !knowledge_snippets.is_empty() {
@@ -119,6 +156,26 @@ impl ContextAssembler {
             "role": "system",
             "content": system_content
         }));
+
+        // For new tasks with empty conversation, inject onboarding guidance
+        if let Some(ref task_id) = session.task_id {
+            let user_msg_count = session.messages.iter().filter(|m| m.role == "user").count();
+            if user_msg_count <= 1 {
+                let task_spec = spec::load_spec(*task_id);
+                if task_spec.goal.is_empty() {
+                    system_parts.push(
+                        "## 新任务引导\n\n\
+                        这是一个新创建的任务，用户可能还不清楚如何描述需求。\n\
+                        请主动引导用户，例如询问：\n\
+                        - 这个任务想要实现什么功能？\n\
+                        - 涉及哪些广告账户？\n\
+                        - 是否需要定期执行？\n\
+                        - 具体想要查看/操作什么数据？\n\n\
+                        给出几个常见场景供用户选择会更友好。".to_string()
+                    );
+                }
+            }
+        }
 
         let history_start = session
             .messages

@@ -29,6 +29,14 @@ fn task_memory_path(task_id: Uuid) -> PathBuf {
     task_memory_dir(task_id).join("TASK_MEMORY.md")
 }
 
+fn task_spec_path(task_id: Uuid) -> PathBuf {
+    task_memory_dir(task_id).join("TASK_SPEC.md")
+}
+
+fn task_run_report_dir(task_id: Uuid) -> PathBuf {
+    task_memory_dir(task_id).join("runs")
+}
+
 /// Ensures memory directory structure exists.
 pub fn ensure_memory_dirs() -> std::io::Result<()> {
     let base = memory_base_dir();
@@ -110,6 +118,50 @@ impl MemoryStore {
         let dir = task_memory_dir(task_id);
         std::fs::create_dir_all(&dir)?;
         std::fs::write(task_memory_path(task_id), content)
+    }
+
+    /// Load task spec (TASK_SPEC.md) for a task. Returns empty string if missing.
+    pub fn load_task_spec(&self, task_id: Uuid) -> std::io::Result<String> {
+        let p = task_spec_path(task_id);
+        if p.is_file() {
+            std::fs::read_to_string(p)
+        } else {
+            Ok(String::new())
+        }
+    }
+
+    /// Write task spec file (full replace). Creates task dir if needed.
+    pub fn write_task_spec(&self, task_id: Uuid, content: &str) -> std::io::Result<()> {
+        let dir = task_memory_dir(task_id);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(task_spec_path(task_id), content)
+    }
+
+    /// Save a run report as `runs/{run_id}.md` under the task directory.
+    pub fn save_run_report(&self, task_id: Uuid, run_id: &str, content: &str) -> std::io::Result<()> {
+        let dir = task_run_report_dir(task_id);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join(format!("{}.md", run_id)), content)
+    }
+
+    /// Load all run report filenames for a task.
+    pub fn list_run_reports(&self, task_id: Uuid) -> std::io::Result<Vec<String>> {
+        let dir = task_run_report_dir(task_id);
+        if !dir.is_dir() {
+            return Ok(Vec::new());
+        }
+        let mut reports = Vec::new();
+        for entry in std::fs::read_dir(dir)? {
+            if let Ok(e) = entry {
+                if let Some(name) = e.file_name().to_str() {
+                    if name.ends_with(".md") {
+                        reports.push(name.to_string());
+                    }
+                }
+            }
+        }
+        reports.sort();
+        Ok(reports)
     }
 
     /// Append to daily note for today.

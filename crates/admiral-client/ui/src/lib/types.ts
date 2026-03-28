@@ -71,16 +71,19 @@ export type TaskCategory = "data_fetch" | "create" | "update" | "mixed";
 
 export type TaskStatus =
   | "draft"
-  | "planning"
-  | "plan_ready"
-  | "scheduled"
+  | "exploring"
+  | "configuring"
+  | "testing"
+  | "ready"
+  | "active"
   | "running"
   | "waiting_for_approval"
   | "paused"
-  | "succeeded"
-  | "partially_succeeded"
+  | "completed"
   | "failed"
   | "cancelled";
+
+export type CompletenessLevel = "incomplete" | "partial" | "sufficient" | "complete";
 
 export interface TaskStep {
   seq: number;
@@ -103,6 +106,7 @@ export interface Task {
   task_type: TaskType;
   task_category: TaskCategory;
   status: TaskStatus;
+  completeness: CompletenessLevel;
   plan: TaskPlan | null;
   platform: string;
   account_ids: string[];
