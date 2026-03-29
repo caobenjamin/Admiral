@@ -632,7 +632,7 @@ pub fn create_app_state() -> AppState {
     let task_engine_for_scheduler = Arc::clone(&task_engine);
     let scheduler = Arc::new(Scheduler::new(Arc::new(move |task_id, _task| {
         let engine = Arc::clone(&task_engine_for_scheduler);
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let mut task = match engine.get_task(task_id) {
                 Ok(Some(t)) => t,
                 _ => return,
@@ -645,8 +645,6 @@ pub fn create_app_state() -> AppState {
             ).await;
         });
     })));
-    scheduler.start();
-
     AppState {
         auth: Arc::new(auth),
         api_client,

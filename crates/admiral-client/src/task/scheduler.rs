@@ -29,7 +29,7 @@ impl Scheduler {
     pub fn start(&self) {
         let callback = Arc::clone(&self.callback);
         let running = Arc::clone(&self.running);
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
             info!("task scheduler started (30s interval)");
             loop {

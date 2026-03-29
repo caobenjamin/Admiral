@@ -4,6 +4,7 @@
 
 use admiral_client_lib::tauri_bridge;
 use admiral_client_lib::db;
+use tauri::Manager;
 
 fn main() {
     if let Err(e) = db::migrations::run_migrations(&db::models::db_path()) {
@@ -13,6 +14,10 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(state)
+        .setup(|app| {
+            app.state::<tauri_bridge::AppState>().scheduler.start();
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             tauri_bridge::auth_register,
             tauri_bridge::auth_login,
