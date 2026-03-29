@@ -60,6 +60,9 @@ pub async fn chat(
     if let Some(ref tc) = req.tool_choice {
         body_obj.insert("tool_choice".to_string(), tc.clone());
     }
+    if let Some(ref rf) = req.response_format {
+        body_obj.insert("response_format".to_string(), rf.clone());
+    }
     let body = serde_json::Value::Object(body_obj);
     let request_url = format!("{}/v1/chat/completions", llm.base_url);
     let request_body_str = crate::utils::truncate_for_db(

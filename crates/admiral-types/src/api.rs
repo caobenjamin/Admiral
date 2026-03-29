@@ -146,4 +146,7 @@ pub struct LlmChatRequest {
     /// e.g. "auto" or "required"; forwarded to upstream.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<serde_json::Value>,
+    /// Optional structured output schema; forwarded to upstream.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<serde_json::Value>,
 }

@@ -179,6 +179,7 @@ impl ContextAssembler {
             - {\"type\":\"call_tool\",\"tool_name\":\"exact_name\",\"arguments\":{...},\"reason\":\"short reason\"}\n\
             - {\"type\":\"respond\",\"message\":\"final answer to user\"}\n\
             - {\"type\":\"ask_user\",\"message\":\"specific question for missing info\"}\n\
+            - {\"type\":\"finish\",\"message\":\"final completion summary\"}\n\
             Rules:\n\
             - Never output markdown fences.\n\
             - Never mix prose outside JSON.\n\

@@ -72,6 +72,7 @@ pub async fn update_task_spec(
         max_tokens: Some(1024),
         tools: None,
         tool_choice: None,
+        response_format: None,
     };
 
     let bytes = match api_client.llm_chat(access_token, &req).await {

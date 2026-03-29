@@ -8,7 +8,6 @@ use crate::network::api_client::ApiClient;
 use admiral_types::api::LlmChatRequest;
 use admiral_types::skill::{SkillCall, SkillResult};
 use chrono::{Datelike, NaiveDate};
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap};
@@ -107,7 +106,6 @@ pub struct AgentResponse {
 enum AgentAction {
     CallTool {
         tool_name: String,
-        #[serde(default)]
         arguments: Value,
         #[serde(default)]
         reason: Option<String>,
@@ -118,12 +116,46 @@ enum AgentAction {
     AskUser {
         message: String,
     },
+    Finish {
+        message: String,
+    },
 }
 
 #[derive(Clone, Debug)]
-struct SseOutcome {
-    content: String,
-    first_chunk_seen: bool,
+enum ActionParseErrorKind {
+    EmptyResponse,
+    EmptyObject,
+    JsonParseFailed,
+    MissingFields,
+    InvalidAction,
+    InvalidEnvelope,
+}
+
+impl ActionParseErrorKind {
+    fn stage(&self) -> &'static str {
+        match self {
+            Self::EmptyResponse => "empty_assistant_reply",
+            Self::EmptyObject => "empty_action_object",
+            Self::JsonParseFailed => "action_json_parse_failed",
+            Self::MissingFields => "action_missing_fields",
+            Self::InvalidAction => "invalid_action",
+            Self::InvalidEnvelope => "llm_response_invalid",
+        }
+    }
+
+    fn level(&self) -> &'static str {
+        match self {
+            Self::InvalidEnvelope => "error",
+            _ => "warn",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ActionParseError {
+    kind: ActionParseErrorKind,
+    detail: String,
+    raw_output: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -359,6 +391,32 @@ impl AgentRuntime {
                         run,
                     });
                 }
+                AgentAction::Finish { message } => {
+                    current_session.messages.push(Message {
+                        role: "assistant".to_string(),
+                        content: Some(message.clone()),
+                        tool_calls: None,
+                        name: None,
+                        tool_call_id: None,
+                    });
+                    mark_step_terminal(&mut run, step_no, "finish", Some(message.clone()));
+                    run.status = AgentRunStatus::Succeeded;
+                    run.final_message = Some(message.clone());
+                    self.publish_run_state(
+                        &tx,
+                        &run,
+                        Some("run_finished"),
+                        Some(json!({"step": step_no, "message": message.clone()})),
+                    )
+                    .await;
+                    let _ = tx.send(StreamEvent::Done).await;
+                    return Ok(AgentResponse {
+                        content: message,
+                        tool_calls_used,
+                        session: current_session,
+                        run,
+                    });
+                }
                 AgentAction::CallTool {
                     tool_name,
                     arguments,
@@ -581,41 +639,33 @@ impl AgentRuntime {
             let messages = self.context.build(session, knowledge_snippets, runtime_notes);
             let req = LlmChatRequest {
                 messages,
-                stream: true,
+                stream: false,
                 model: self.context.profile.default_model.clone(),
                 max_tokens: Some(2048),
                 tools: None,
                 tool_choice: None,
+                response_format: Some(agent_action_response_format()),
             };
 
-            let resp = self
+            let raw_response = self
                 .api_client
-                .llm_chat_stream(access_token, &req)
+                .llm_chat(access_token, &req)
                 .await
-                .map_err(|e| anyhow::anyhow!("llm_chat_stream: {}", e))?;
-            let outcome = parse_sse_stream(resp).await?;
+                .map_err(|e| anyhow::anyhow!("llm_chat: {}", e))?;
+            let content = match extract_assistant_content(&raw_response) {
+                Ok(content) => content,
+                Err(err) => {
+                    record_decision_parse_failure(tx, run, attempt, err).await;
+                    continue;
+                }
+            };
 
-            if !outcome.first_chunk_seen {
-                emit_status(tx, "llm_no_chunks", "SSE 已结束，但未收到任何数据分片。准备自动重试。", Some("warn")).await;
-                continue;
-            }
-            if outcome.content.trim().is_empty() {
-                emit_status(tx, "empty_assistant_reply", "模型回复为空，准备自动重试。", Some("warn")).await;
-                continue;
-            }
-
-            match parse_action(&outcome.content) {
+            match parse_action(&content) {
                 Ok(action) => {
                     return Ok(action);
                 }
                 Err(err) => {
-                    emit_status(
-                        tx,
-                        "invalid_action",
-                        format!("模型未返回合法结构化动作：{}。准备自动重试。", err),
-                        Some("warn"),
-                    )
-                    .await;
+                    record_decision_parse_failure(tx, run, attempt, err).await;
                 }
             }
         }
@@ -715,7 +765,7 @@ fn mark_step_terminal(run: &mut AgentRunState, step_no: u32, action_type: &str, 
     }
 }
 
-fn parse_action(raw: &str) -> anyhow::Result<AgentAction> {
+fn parse_action(raw: &str) -> Result<AgentAction, ActionParseError> {
     let trimmed = raw.trim();
     let unwrapped = trimmed
         .strip_prefix("```json")
@@ -723,58 +773,234 @@ fn parse_action(raw: &str) -> anyhow::Result<AgentAction> {
         .or_else(|| trimmed.strip_prefix("```").and_then(|s| s.strip_suffix("```")))
         .map(|s| s.trim())
         .unwrap_or(trimmed);
-    serde_json::from_str(unwrapped).map_err(|e| anyhow::anyhow!("parse action json: {}", e))
+    if unwrapped.is_empty() {
+        return Err(ActionParseError {
+            kind: ActionParseErrorKind::EmptyResponse,
+            detail: "assistant content is empty".to_string(),
+            raw_output: Some(raw.to_string()),
+        });
+    }
+
+    let value: Value = serde_json::from_str(unwrapped).map_err(|e| ActionParseError {
+        kind: ActionParseErrorKind::JsonParseFailed,
+        detail: format!("parse action json: {}", e),
+        raw_output: Some(unwrapped.to_string()),
+    })?;
+    let Some(obj) = value.as_object() else {
+        return Err(ActionParseError {
+            kind: ActionParseErrorKind::InvalidAction,
+            detail: "action payload must be a JSON object".to_string(),
+            raw_output: Some(unwrapped.to_string()),
+        });
+    };
+    if obj.is_empty() {
+        return Err(ActionParseError {
+            kind: ActionParseErrorKind::EmptyObject,
+            detail: "action object is empty".to_string(),
+            raw_output: Some(unwrapped.to_string()),
+        });
+    }
+
+    let action_type = required_string(obj, "type", unwrapped)?;
+    match action_type {
+        "call_tool" => {
+            let tool_name = required_string(obj, "tool_name", unwrapped)?.to_string();
+            let arguments = obj
+                .get("arguments")
+                .ok_or_else(|| missing_field("arguments", unwrapped))?;
+            let Some(arguments_obj) = arguments.as_object() else {
+                return Err(ActionParseError {
+                    kind: ActionParseErrorKind::InvalidAction,
+                    detail: "`arguments` must be a JSON object".to_string(),
+                    raw_output: Some(unwrapped.to_string()),
+                });
+            };
+            let reason = optional_string(obj, "reason", unwrapped)?;
+            Ok(AgentAction::CallTool {
+                tool_name,
+                arguments: Value::Object(arguments_obj.clone()),
+                reason,
+            })
+        }
+        "respond" => Ok(AgentAction::Respond {
+            message: required_string(obj, "message", unwrapped)?.to_string(),
+        }),
+        "ask_user" => Ok(AgentAction::AskUser {
+            message: required_string(obj, "message", unwrapped)?.to_string(),
+        }),
+        "finish" => Ok(AgentAction::Finish {
+            message: required_string(obj, "message", unwrapped)?.to_string(),
+        }),
+        other => Err(ActionParseError {
+            kind: ActionParseErrorKind::InvalidAction,
+            detail: format!("unsupported action type `{}`", other),
+            raw_output: Some(unwrapped.to_string()),
+        }),
+    }
 }
 
 fn canonical_json(value: &Value) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string())
 }
 
-async fn parse_sse_stream(resp: reqwest::Response) -> Result<SseOutcome, anyhow::Error> {
-    let mut content = String::new();
-    let mut buffer = String::new();
-    let mut first_chunk_seen = false;
+fn extract_assistant_content(raw_response: &[u8]) -> Result<String, ActionParseError> {
+    let raw_text = String::from_utf8_lossy(raw_response).to_string();
+    let response: Value = serde_json::from_slice(raw_response).map_err(|e| ActionParseError {
+        kind: ActionParseErrorKind::InvalidEnvelope,
+        detail: format!("parse llm response json: {}", e),
+        raw_output: Some(raw_text.clone()),
+    })?;
 
-    let mut stream = resp.bytes_stream();
-    while let Some(chunk_result) = stream.next().await {
-        let chunk = chunk_result.map_err(|e| anyhow::anyhow!("stream read: {}", e))?;
-        if !first_chunk_seen {
-            first_chunk_seen = true;
+    let Some(message) = response.pointer("/choices/0/message/content") else {
+        return Err(ActionParseError {
+            kind: ActionParseErrorKind::InvalidEnvelope,
+            detail: "missing `choices[0].message.content` in llm response".to_string(),
+            raw_output: Some(raw_text),
+        });
+    };
+
+    match message {
+        Value::String(text) => Ok(text.to_string()),
+        Value::Array(items) => {
+            let text = items
+                .iter()
+                .filter_map(|item| match item {
+                    Value::Object(map) => map.get("text").and_then(|v| v.as_str()),
+                    _ => None,
+                })
+                .collect::<String>();
+            if text.trim().is_empty() {
+                Err(ActionParseError {
+                    kind: ActionParseErrorKind::EmptyResponse,
+                    detail: "assistant content array did not contain text".to_string(),
+                    raw_output: Some(raw_text),
+                })
+            } else {
+                Ok(text)
+            }
         }
-        buffer.push_str(&String::from_utf8_lossy(&chunk));
-        process_sse_buffer(&mut buffer, &mut content);
+        _ => Err(ActionParseError {
+            kind: ActionParseErrorKind::InvalidEnvelope,
+            detail: "`choices[0].message.content` must be string or text array".to_string(),
+            raw_output: Some(raw_text),
+        }),
     }
+}
 
-    if !buffer.trim().is_empty() {
-        buffer.push('\n');
-        process_sse_buffer(&mut buffer, &mut content);
+fn required_string<'a>(
+    obj: &'a serde_json::Map<String, Value>,
+    field: &str,
+    raw_output: &str,
+) -> Result<&'a str, ActionParseError> {
+    match obj.get(field).and_then(|v| v.as_str()) {
+        Some(value) if !value.trim().is_empty() => Ok(value),
+        _ => Err(missing_field(field, raw_output)),
     }
+}
 
-    Ok(SseOutcome {
-        content,
-        first_chunk_seen,
+fn optional_string(
+    obj: &serde_json::Map<String, Value>,
+    field: &str,
+    raw_output: &str,
+) -> Result<Option<String>, ActionParseError> {
+    match obj.get(field) {
+        Some(Value::String(value)) => Ok(Some(value.clone())),
+        Some(Value::Null) | None => Ok(None),
+        Some(_) => Err(ActionParseError {
+            kind: ActionParseErrorKind::InvalidAction,
+            detail: format!("`{}` must be a string when present", field),
+            raw_output: Some(raw_output.to_string()),
+        }),
+    }
+}
+
+fn missing_field(field: &str, raw_output: &str) -> ActionParseError {
+    ActionParseError {
+        kind: ActionParseErrorKind::MissingFields,
+        detail: format!("missing or empty required field `{}`", field),
+        raw_output: Some(raw_output.to_string()),
+    }
+}
+
+fn agent_action_response_format() -> Value {
+    json!({
+        "type": "json_schema",
+        "json_schema": {
+            "name": "agent_action",
+            "strict": true,
+            "schema": {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "type": { "const": "call_tool" },
+                            "tool_name": { "type": "string", "minLength": 1 },
+                            "arguments": { "type": "object", "additionalProperties": true },
+                            "reason": { "type": "string" }
+                        },
+                        "required": ["type", "tool_name", "arguments"]
+                    },
+                    {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "type": { "const": "respond" },
+                            "message": { "type": "string", "minLength": 1 }
+                        },
+                        "required": ["type", "message"]
+                    },
+                    {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "type": { "const": "ask_user" },
+                            "message": { "type": "string", "minLength": 1 }
+                        },
+                        "required": ["type", "message"]
+                    },
+                    {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "type": { "const": "finish" },
+                            "message": { "type": "string", "minLength": 1 }
+                        },
+                        "required": ["type", "message"]
+                    }
+                ]
+            }
+        }
     })
 }
 
-fn process_sse_buffer(buffer: &mut String, content: &mut String) {
-    while let Some(pos) = buffer.find('\n') {
-        let line = buffer[..pos].to_string();
-        *buffer = buffer[pos + 1..].to_string();
-
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with(':') || trimmed == "data: [DONE]" {
-            continue;
-        }
-        let Some(data) = trimmed.strip_prefix("data: ") else {
-            continue;
-        };
-        let Ok(json) = serde_json::from_str::<Value>(data) else {
-            continue;
-        };
-        if let Some(delta) = json.pointer("/choices/0/delta/content").and_then(|v| v.as_str()) {
-            content.push_str(delta);
-        }
+async fn record_decision_parse_failure(
+    tx: &mpsc::Sender<StreamEvent>,
+    run: &mut AgentRunState,
+    attempt: u32,
+    err: ActionParseError,
+) {
+    if let Some(step) = run.steps.iter_mut().find(|s| s.step == run.current_step) {
+        step.error = Some(format!("{}: {}", err.kind.stage(), err.detail));
     }
+    emit_status(
+        tx,
+        err.kind.stage(),
+        format!("模型动作输出无效：{}。准备自动重试。", err.detail),
+        Some(err.kind.level()),
+    )
+    .await;
+    persist_run_event(
+        run,
+        err.kind.stage(),
+        Some(json!({
+            "step": run.current_step,
+            "attempt": attempt,
+            "detail": err.detail,
+            "raw_output": err.raw_output,
+        })),
+    );
+    persist_run_state(run);
 }
 
 fn resolve_tool_name_to_skill_id(name: &str, registry: &crate::skill::registry::SkillRegistry) -> Option<String> {

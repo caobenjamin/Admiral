@@ -143,6 +143,7 @@ async fn call_llm_for_updates(
         max_tokens: Some(512),
         tools: None,
         tool_choice: None,
+        response_format: None,
     };
 
     let bytes = match api_client.llm_chat(access_token, &req).await {
