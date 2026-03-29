@@ -213,6 +213,7 @@ export interface ConversationMessage {
   role: string;
   content: string;
   tool_calls?: unknown;
+  name?: string | null;
   timestamp: string;
 }
 

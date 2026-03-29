@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use dashmap::DashMap;
 use governor::{Quota, RateLimiter as GovLimiter, clock::DefaultClock, state::{InMemoryState, NotKeyed}};
+use tracing::{info, warn};
 
 use admiral_types::api::MapiProxyRequest;
 use admiral_types::skill::{SkillCall, SkillDefinition, SkillResult};
@@ -124,6 +125,13 @@ impl SkillExecutor {
             query,
             body,
         };
+        info!(
+            skill_id = %skill.id,
+            account_id,
+            method = %req.method,
+            path = %req.path,
+            "dispatching mapi proxy request"
+        );
 
         let (status, bytes) = self
             .api_client
@@ -133,8 +141,22 @@ impl SkillExecutor {
 
         if !(200..300).contains(&status) {
             let msg = String::from_utf8_lossy(&bytes);
+            warn!(
+                skill_id = %skill.id,
+                account_id,
+                status,
+                body = %msg,
+                "mapi proxy request failed"
+            );
             return Err(anyhow::anyhow!("MAPI error {}: {}", status, msg));
         }
+        info!(
+            skill_id = %skill.id,
+            account_id,
+            status,
+            bytes = bytes.len(),
+            "mapi proxy request succeeded"
+        );
 
         let data: serde_json::Value = serde_json::from_slice(&bytes)
             .unwrap_or_else(|_| serde_json::json!({ "raw": String::from_utf8_lossy(&bytes) }));

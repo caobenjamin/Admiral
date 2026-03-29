@@ -16,6 +16,7 @@ use admiral_types::api::*;
 use admiral_types::task::{Task, TaskCategory, TaskStatus, TaskType};
 use std::sync::Arc;
 use tauri::Emitter;
+use tracing::{error, info};
 use uuid::Uuid;
 
 /// App state held by Tauri (thread-safe).
@@ -402,6 +403,7 @@ pub struct ConversationMessage {
     pub role: String,
     pub content: String,
     pub tool_calls: Option<serde_json::Value>,
+    pub name: Option<String>,
     pub timestamp: String,
 }
 
@@ -419,6 +421,7 @@ pub async fn task_load_conversations(
             role: r.role,
             content: r.content,
             tool_calls: r.tool_calls.and_then(|s| serde_json::from_str(&s).ok()),
+            name: r.name,
             timestamp: r.timestamp,
         })
         .collect())
@@ -450,17 +453,54 @@ fn load_session(task_id: &Option<String>) -> (String, Option<Uuid>, Vec<Message>
         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
     let mut messages: Vec<Message> = Vec::new();
+    let mut pending_tool_calls: std::collections::VecDeque<(String, Option<String>)> =
+        std::collections::VecDeque::new();
     if let Some(tid) = task_id {
         let db_path = db::models::db_path();
         if let Ok(conn) = db::models::open_ro(&db_path) {
             if let Ok(rows) = db::models::load_conversations_by_task(&conn, tid) {
                 for row in rows {
+                    let tool_calls = row.tool_calls.and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+                    if row.role == "assistant" {
+                        if let Some(arr) = tool_calls.as_ref().and_then(|v| v.as_array()) {
+                            for tc in arr {
+                                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                if id.is_empty() {
+                                    continue;
+                                }
+                                let name = tc
+                                    .get("function")
+                                    .and_then(|v| v.get("name"))
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string());
+                                pending_tool_calls.push_back((id, name));
+                            }
+                        }
+                    }
+
+                    let mut name = row.name;
+                    let mut tool_call_id = row.tool_call_id;
+                    if row.role == "tool" && tool_call_id.is_none() {
+                        if let Some((inferred_id, inferred_name)) = pending_tool_calls.pop_front() {
+                            tool_call_id = Some(inferred_id);
+                            if name.is_none() {
+                                name = inferred_name;
+                            }
+                        }
+                    } else if row.role == "tool" && tool_call_id.is_some() {
+                        let _ = pending_tool_calls.pop_front();
+                    }
+
+                    if row.role == "tool" && tool_call_id.is_none() {
+                        continue;
+                    }
+
                     messages.push(Message {
                         role: row.role,
                         content: if row.content.is_empty() { None } else { Some(row.content) },
-                        tool_calls: row.tool_calls.and_then(|s| serde_json::from_str(&s).ok()),
-                        name: None,
-                        tool_call_id: None,
+                        tool_calls,
+                        name,
+                        tool_call_id,
                     });
                 }
             }
@@ -490,6 +530,8 @@ fn persist_new_messages(
                 role: msg.role.clone(),
                 content: msg.content.clone().unwrap_or_default(),
                 tool_calls: msg.tool_calls.as_ref().and_then(|v| serde_json::to_string(v).ok()),
+                name: msg.name.clone(),
+                tool_call_id: msg.tool_call_id.clone(),
                 tool_result: None,
                 timestamp: chrono::Utc::now().to_rfc3339(),
             };
@@ -550,6 +592,7 @@ pub async fn agent_chat_stream(
     message: String,
     task_id: Option<String>,
 ) -> Result<AgentResponse, String> {
+    info!(task_id = ?task_id, "agent_chat_stream invoked");
     let token = state.auth.get_access_token().map_err(|e| e.to_string())?;
     let (session_id, task_uuid, messages) = load_session(&task_id);
     let msg_count_before = messages.len();
@@ -566,10 +609,18 @@ pub async fn agent_chat_stream(
 
     let guard = state.agent_runtime.read().await;
     let runtime = guard.as_ref().ok_or("Agent not initialized")?;
-    let response = runtime
-        .process_message_stream(session, &message, Some(&token), tx)
+    let response = match runtime
+        .process_message_stream(session, &message, Some(&token), tx.clone())
         .await
-        .map_err(|e| e.to_string())?;
+    {
+        Ok(response) => response,
+        Err(e) => {
+            let message = e.to_string();
+            error!(error = %message, "agent_chat_stream failed");
+            let _ = tx.send(StreamEvent::Error { message: message.clone() }).await;
+            return Err(message);
+        }
+    };
     let _ = forward_task.await;
 
     persist_new_messages(&response, msg_count_before, &task_id, &session_id);

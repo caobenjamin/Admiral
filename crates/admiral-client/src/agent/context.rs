@@ -84,6 +84,13 @@ impl ContextAssembler {
             "## Current date (use for report queries, start_time/end_time)\n\nToday is {} (YYYY-MM-DD).",
             today
         ));
+        system_parts.push(
+            "## Report Query Rules\n\n\
+             - For report analysis requests, first resolve account_id. If user did not provide one, call `bili_account_list_local`.\n\
+             - After account_id is known, use `bili_report_query` to fetch actual data instead of answering from guesswork.\n\
+             - `bili_report_query` can only query one day at a time because `start_time` and `end_time` must be the same date.\n\
+             - For a month-by-day analysis, call the report tool repeatedly for each day needed, then summarize the results.".to_string(),
+        );
 
         if let Ok(user_mem) = self.memory.load_user_memory() {
             if !user_mem.is_empty() {

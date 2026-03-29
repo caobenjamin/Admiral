@@ -7,7 +7,7 @@ import { useTaskStore, type TaskMeta } from "@/stores/taskStore";
 import { useToastStore } from "@/stores/toastStore";
 import { TaskDetail } from "@/components/task/TaskDetail";
 import { ChatInput } from "@/components/chat/ChatInput";
-import { MessageBubble, type ChatMessage } from "@/components/chat/MessageBubble";
+import { MessageBubble, type ChatMessage, type MessageRole } from "@/components/chat/MessageBubble";
 import * as tauri from "@/lib/tauri";
 import type { LicenseResponse } from "@/lib/types";
 
@@ -48,18 +48,24 @@ function mapAgentErrorMessage(error: unknown): string {
 }
 
 function sessionMessagesToChatMessages(
-  sessionMessages: { role: string; content?: string | null; tool_calls?: unknown }[]
+  sessionMessages: { role: string; content?: string | null; tool_calls?: unknown; name?: string | null }[]
 ): ChatMessage[] {
   return sessionMessages
-    .filter((m) => m.role === "user" || m.role === "assistant")
+    .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool")
     .map((m, i) => {
       let content = m.content ?? "";
       if (m.role === "assistant" && m.tool_calls && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
         if (!content) content = "[调用工具]";
       }
+      if (m.role === "assistant" && !content.trim()) {
+        content = "本轮未收到可展示的正文回复，请查看过程日志。";
+      }
+      if (m.role === "tool" && m.name) {
+        content = `工具 ${m.name} 返回：\n${content || "{}"}`;
+      }
       return {
         id: `msg-${i}`,
-        role: m.role as "user" | "assistant",
+        role: m.role as MessageRole,
         content,
       };
     });
@@ -105,6 +111,13 @@ export function HomePage() {
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>("loading");
   const prevTaskIdRef = useRef<string | null>(null);
   const streamingMsgIdRef = useRef<string | null>(null);
+  const processMsgIdsRef = useRef<string[]>([]);
+
+  const appendProcessMessage = useCallback((role: MessageRole, content: string) => {
+    const id = `proc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    processMsgIdsRef.current.push(id);
+    setMessages((prev) => [...prev, { id, role, content }]);
+  }, []);
 
   const licenseNotice = useMemo(() => {
     if (licenseStatus === "loading") return "正在检查许可状态，请稍候。";
@@ -114,6 +127,10 @@ export function HomePage() {
   }, [license, licenseStatus]);
 
   const { chat, loading, error } = useAgent(selectedTaskId, {
+    onStatus(stage, message, level) {
+      const prefix = level === "error" ? "错误" : level === "warn" ? "注意" : "进度";
+      appendProcessMessage("system", `${prefix} · ${stage}\n${message}`);
+    },
     onDelta(content) {
       const msgId = streamingMsgIdRef.current;
       if (!msgId) return;
@@ -126,28 +143,14 @@ export function HomePage() {
       });
     },
     onToolUse(name) {
-      const msgId = streamingMsgIdRef.current;
-      if (!msgId) return;
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && last.id === msgId) {
-          const toolHint = `\n\n> 调用工具: ${name} ...`;
-          return [...prev.slice(0, -1), { ...last, content: last.content + toolHint }];
-        }
-        return prev;
-      });
+      appendProcessMessage("system", `工具调用\n${name}`);
     },
-    onToolResult(_name, success) {
-      const msgId = streamingMsgIdRef.current;
-      if (!msgId) return;
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && last.id === msgId) {
-          const resultHint = success ? ` 完成` : ` 失败`;
-          return [...prev.slice(0, -1), { ...last, content: last.content + resultHint + "\n\n" }];
-        }
-        return prev;
-      });
+    onToolResult(name, success) {
+      appendProcessMessage("system", `${success ? "工具完成" : "工具失败"}\n${name}`);
+    },
+    onError(message) {
+      appendProcessMessage("system", `流错误\n${message}`);
+      showToast(message, "error");
     },
   });
 
@@ -203,11 +206,11 @@ export function HomePage() {
 
     tauri.taskLoadConversations(selectedTaskId).then((rows) => {
       const chatMsgs: ChatMessage[] = rows
-        .filter((r) => r.role === "user" || r.role === "assistant")
+        .filter((r) => r.role === "user" || r.role === "assistant" || r.role === "tool")
         .map((r, i) => ({
           id: r.id || `hist-${i}`,
-          role: r.role as "user" | "assistant",
-          content: r.content || "[调用工具]",
+          role: r.role as MessageRole,
+          content: r.role === "tool" && r.name ? `工具 ${r.name} 返回：\n${r.content || "{}"}` : (r.content || "[调用工具]"),
         }));
       setMessages(chatMsgs);
     }).catch(() => {
@@ -233,17 +236,26 @@ export function HomePage() {
       const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", content };
       const assistantMsgId = `a-${Date.now()}`;
       streamingMsgIdRef.current = assistantMsgId;
+      processMsgIdsRef.current = [];
 
       setMessages((prev) => [
         ...prev,
         userMsg,
         { id: assistantMsgId, role: "assistant", content: "" },
       ]);
+      appendProcessMessage("system", "请求已发送\n正在建立流式会话并等待模型响应。");
 
       try {
         const response = await chat(content);
         const list = sessionMessagesToChatMessages(response.session.messages);
-        setMessages(list);
+        const processIds = new Set(processMsgIdsRef.current);
+        setMessages((prev) => {
+          const processMessages = prev.filter((m) => processIds.has(m.id));
+          return [...processMessages, ...list];
+        });
+        if (!response.content.trim() && response.tool_calls_used.length === 0) {
+          appendProcessMessage("system", "未收到正文\n模型请求已完成，但没有返回可展示文本，也没有触发工具。");
+        }
         fetchTasks();
       } catch (e) {
         const errMsg = mapAgentErrorMessage(e);
@@ -254,11 +266,12 @@ export function HomePage() {
           }
           return [...prev, { id: `err-${Date.now()}`, role: "assistant", content: errMsg }];
         });
+        appendProcessMessage("system", `请求失败\n${errMsg}`);
       } finally {
         streamingMsgIdRef.current = null;
       }
     },
-    [chat, selectedTaskId, fetchTasks, refreshLicenseStatus, showToast]
+    [appendProcessMessage, chat, selectedTaskId, fetchTasks, refreshLicenseStatus, showToast]
   );
 
   if (!user) return null;

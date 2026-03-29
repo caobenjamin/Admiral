@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use std::path::Path;
 use tracing::info;
 
-const SCHEMA_VERSION: u32 = 3;
+const SCHEMA_VERSION: u32 = 4;
 
 /// Run all migrations. Creates DB file and tables if they don't exist.
 pub fn run_migrations(db_path: &Path) -> anyhow::Result<()> {
@@ -23,6 +23,9 @@ pub fn run_migrations(db_path: &Path) -> anyhow::Result<()> {
     }
     if current <= 2 {
         migrate_v2_to_v3(&conn)?;
+    }
+    if current <= 3 {
+        migrate_v3_to_v4(&conn)?;
     }
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     Ok(())
@@ -226,5 +229,22 @@ fn migrate_v2_to_v3(conn: &Connection) -> anyhow::Result<()> {
     }
 
     info!("SQLite schema migrated to v3 (conversation-driven task statuses)");
+    Ok(())
+}
+
+fn migrate_v3_to_v4(conn: &Connection) -> anyhow::Result<()> {
+    let add_cols = [
+        "ALTER TABLE conversations ADD COLUMN name TEXT",
+        "ALTER TABLE conversations ADD COLUMN tool_call_id TEXT",
+    ];
+    for sql in &add_cols {
+        if let Err(e) = conn.execute(sql, []) {
+            if !e.to_string().contains("duplicate column") {
+                return Err(e.into());
+            }
+        }
+    }
+
+    info!("SQLite schema migrated to v4 (conversation tool metadata)");
     Ok(())
 }

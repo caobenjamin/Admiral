@@ -316,6 +316,8 @@ pub struct ConversationRow {
     pub role: String,
     pub content: String,
     pub tool_calls: Option<String>,
+    pub name: Option<String>,
+    pub tool_call_id: Option<String>,
     pub tool_result: Option<String>,
     pub timestamp: String,
 }
@@ -324,8 +326,8 @@ pub struct ConversationRow {
 pub fn save_conversation_message(conn: &rusqlite::Connection, msg: &ConversationRow) -> anyhow::Result<()> {
     conn.execute(
         r#"
-        INSERT INTO conversations (id, task_id, session_id, role, content, tool_calls, tool_result, timestamp)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        INSERT INTO conversations (id, task_id, session_id, role, content, tool_calls, name, tool_call_id, tool_result, timestamp)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
         "#,
         params![
             msg.id,
@@ -334,6 +336,8 @@ pub fn save_conversation_message(conn: &rusqlite::Connection, msg: &Conversation
             msg.role,
             msg.content,
             msg.tool_calls,
+            msg.name,
+            msg.tool_call_id,
             msg.tool_result,
             msg.timestamp,
         ],
@@ -347,7 +351,7 @@ pub fn load_conversations_by_task(
     task_id: &str,
 ) -> anyhow::Result<Vec<ConversationRow>> {
     let mut stmt = conn.prepare(
-        "SELECT id, task_id, session_id, role, content, tool_calls, tool_result, timestamp FROM conversations WHERE task_id = ?1 ORDER BY timestamp ASC",
+        "SELECT id, task_id, session_id, role, content, tool_calls, name, tool_call_id, tool_result, timestamp FROM conversations WHERE task_id = ?1 ORDER BY timestamp ASC",
     )?;
     let out: Vec<ConversationRow> = stmt
         .query_map(params![task_id], |row| {
@@ -358,8 +362,10 @@ pub fn load_conversations_by_task(
                 role: row.get(3)?,
                 content: row.get(4)?,
                 tool_calls: row.get(5)?,
-                tool_result: row.get(6)?,
-                timestamp: row.get(7)?,
+                name: row.get(6)?,
+                tool_call_id: row.get(7)?,
+                tool_result: row.get(8)?,
+                timestamp: row.get(9)?,
             })
         })?
         .filter_map(|r| r.ok())

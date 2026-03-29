@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tracing::{info, warn};
 
 /// Events emitted during streaming LLM interaction.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -18,6 +19,12 @@ use tokio::sync::mpsc;
 pub enum StreamEvent {
     #[serde(rename = "delta")]
     Delta { content: String },
+    #[serde(rename = "status")]
+    Status {
+        stage: String,
+        message: String,
+        level: Option<String>,
+    },
     #[serde(rename = "tool_use")]
     ToolUse { name: String },
     #[serde(rename = "tool_result")]
@@ -26,6 +33,16 @@ pub enum StreamEvent {
     Done,
     #[serde(rename = "error")]
     Error { message: String },
+}
+
+async fn emit_status(tx: &mpsc::Sender<StreamEvent>, stage: &str, message: impl Into<String>, level: Option<&str>) {
+    let _ = tx
+        .send(StreamEvent::Status {
+            stage: stage.to_string(),
+            message: message.into(),
+            level: level.map(|s| s.to_string()),
+        })
+        .await;
 }
 
 /// Response from one agent turn (final text and optional tool calls made).
@@ -107,6 +124,7 @@ impl AgentRuntime {
         loop {
             turn += 1;
             if turn > max_turns {
+                emit_status(&tx, "max_turns", "达到最大轮次，已停止继续推理。", Some("warn")).await;
                 let _ = tx.send(StreamEvent::Done).await;
                 break Ok(AgentResponse {
                     content: "达到最大轮次，请简化请求。".to_string(),
@@ -138,14 +156,25 @@ impl AgentRuntime {
             };
 
             let token = access_token.ok_or_else(|| anyhow::anyhow!("access_token required for LLM"))?;
+            emit_status(
+                &tx,
+                "llm_request_start",
+                format!("开始第 {} 轮模型请求，等待上游建立 SSE 流。", turn),
+                Some("info"),
+            )
+            .await;
+            info!(turn, model = ?self.context.profile.default_model, "agent llm request start");
 
             let resp = self
                 .api_client
                 .llm_chat_stream(token, &req)
                 .await
                 .map_err(|e| anyhow::anyhow!("llm_chat_stream: {}", e))?;
+            emit_status(&tx, "llm_stream_open", "上游 SSE 已连接，正在接收模型输出。", Some("info")).await;
+            info!(turn, "agent llm stream opened");
 
             let (content, tool_calls_value) = parse_sse_stream(resp, &tx).await?;
+            info!(turn, content_len = content.len(), has_tool_calls = tool_calls_value.is_some(), "agent llm stream parsed");
 
             current_session.messages.push(Message {
                 role: "assistant".to_string(),
@@ -161,6 +190,10 @@ impl AgentRuntime {
                 .cloned();
 
             if tool_calls_arr.is_none() || tool_calls_arr.as_ref().map(|a| a.is_empty()).unwrap_or(true) {
+                if content.trim().is_empty() {
+                    emit_status(&tx, "empty_assistant_reply", "模型请求完成，但未返回正文，也未触发工具。", Some("warn")).await;
+                    warn!(turn, "agent received empty assistant reply");
+                }
                 let _ = tx.send(StreamEvent::Done).await;
                 break Ok(AgentResponse {
                     content,
@@ -177,12 +210,26 @@ impl AgentRuntime {
                 let args_str = func.get("arguments").and_then(|v| v.as_str()).unwrap_or("{}");
                 let params: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
 
+                emit_status(
+                    &tx,
+                    "tool_dispatch",
+                    format!("准备执行工具 `{}`。", name),
+                    Some("info"),
+                )
+                .await;
                 let _ = tx.send(StreamEvent::ToolUse { name: name.to_string() }).await;
 
                 let skill_id = resolve_tool_name_to_skill_id(name, self.context.skill_registry.as_ref());
                 let skill_id = match skill_id {
                     Some(s) => s,
                     None => {
+                        emit_status(
+                            &tx,
+                            "tool_unknown",
+                            format!("工具 `{}` 未映射到本地技能。", name),
+                            Some("error"),
+                        )
+                        .await;
                         let _ = tx.send(StreamEvent::ToolResult { name: name.to_string(), success: false }).await;
                         current_session.messages.push(Message {
                             role: "tool".to_string(),
@@ -208,6 +255,17 @@ impl AgentRuntime {
                     .execute(call, access_token)
                     .await
                     .unwrap_or_else(|e| SkillResult::err(e.to_string(), None));
+                emit_status(
+                    &tx,
+                    "tool_complete",
+                    format!(
+                        "工具 `{}` 执行{}。",
+                        name,
+                        if result.success { "完成" } else { "失败" }
+                    ),
+                    Some(if result.success { "info" } else { "error" }),
+                )
+                .await;
 
                 let _ = tx.send(StreamEvent::ToolResult { name: name.to_string(), success: result.success }).await;
 
@@ -301,13 +359,22 @@ async fn parse_sse_stream(
     let mut content = String::new();
     let mut tool_calls_map: HashMap<u64, (String, String, String)> = HashMap::new();
     let mut buffer = String::new();
+    let mut first_chunk_seen = false;
 
     let mut stream = resp.bytes_stream();
     while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result.map_err(|e| anyhow::anyhow!("stream read: {}", e))?;
+        if !first_chunk_seen {
+            first_chunk_seen = true;
+            emit_status(tx, "llm_first_chunk", "已收到模型首个流式分片。", Some("info")).await;
+        }
         buffer.push_str(&String::from_utf8_lossy(&chunk));
 
         process_sse_buffer(&mut buffer, &mut content, &mut tool_calls_map, tx).await;
+    }
+
+    if !first_chunk_seen {
+        emit_status(tx, "llm_no_chunks", "SSE 已结束，但未收到任何数据分片。", Some("warn")).await;
     }
 
     if !buffer.trim().is_empty() {

@@ -1,1 +1,1 @@
-{}
+{"main-capability":{"identifier":"main-capability","description":"Grants the main window access to core Tauri APIs used by the Admiral UI.","local":true,"windows":["main"],"permissions":["core:default"]}}

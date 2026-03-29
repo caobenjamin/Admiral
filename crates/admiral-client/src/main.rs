@@ -5,8 +5,15 @@
 use admiral_client_lib::tauri_bridge;
 use admiral_client_lib::db;
 use tauri::Manager;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 fn main() {
+    let level = std::env::var("RUST_LOG").unwrap_or_else(|_| "info,admiral_client=debug".to_string());
+    let _ = tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::new(level))
+        .with(tracing_subscriber::fmt::layer().pretty())
+        .try_init();
+
     if let Err(e) = db::migrations::run_migrations(&db::models::db_path()) {
         tracing::warn!(error = %e, "SQLite migration failed");
     }

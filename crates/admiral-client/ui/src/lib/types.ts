@@ -176,6 +176,7 @@ export interface OperationPermission {
 // ---------- Stream Events ----------
 export type StreamEvent =
   | { type: "delta"; content: string }
+  | { type: "status"; stage: string; message: string; level?: "info" | "warn" | "error" }
   | { type: "tool_use"; name: string }
   | { type: "tool_result"; name: string; success: boolean }
   | { type: "done" }
