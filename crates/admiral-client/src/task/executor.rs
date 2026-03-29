@@ -274,10 +274,11 @@ pub async fn execute_plan_from_step(
                 .get(&step.skill_id)
                 .ok_or_else(|| anyhow::anyhow!("skill not found: {}", step.skill_id))?;
             let resolved_params = ctx.apply_bindings(&step.params, &step.param_bindings);
+            let account_id = resolved_params.get("account_id").and_then(|v| v.as_i64());
             let call = SkillCall {
                 skill_id: step.skill_id.clone(),
                 params: resolved_params,
-                account_id: step.params.get("account_id").and_then(|v| v.as_i64()),
+                account_id,
                 dry_run: true,
             };
             let err_msg = validator::validate_call(&skill, &call).err();

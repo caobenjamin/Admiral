@@ -264,6 +264,19 @@ pub fn list_task_runs(conn: &rusqlite::Connection, task_id: Uuid) -> anyhow::Res
     Ok(out)
 }
 
+pub fn get_task_run(conn: &rusqlite::Connection, run_id: Uuid) -> anyhow::Result<Option<TaskRun>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, task_id, run_type, status, started_at, finished_at, step_results, error, resume_from_step, completed_steps FROM task_runs WHERE id = ?1 LIMIT 1",
+    )?;
+    let mut rows = stmt.query(params![run_id.to_string()])?;
+    let row = match rows.next()? {
+        Some(r) => r,
+        None => return Ok(None),
+    };
+    let run = row_to_task_run(row).map_err(|e| anyhow::anyhow!("db: {}", e))?;
+    Ok(Some(run))
+}
+
 fn row_to_task_run(row: &rusqlite::Row) -> rusqlite::Result<TaskRun> {
     let id: String = row.get(0)?;
     let task_id: String = row.get(1)?;
@@ -366,6 +379,231 @@ pub fn load_conversations_by_task(
                 tool_call_id: row.get(7)?,
                 tool_result: row.get(8)?,
                 timestamp: row.get(9)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(out)
+}
+
+// ========================== Agent Runtime ==========================
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct AgentRunRow {
+    pub id: String,
+    pub task_id: Option<String>,
+    pub session_id: String,
+    pub status: String,
+    pub current_step: u32,
+    pub total_retries: u32,
+    pub max_steps: u32,
+    pub final_message: Option<String>,
+    pub waiting_for_user: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct AgentStepRow {
+    pub id: String,
+    pub run_id: String,
+    pub step: u32,
+    pub title: String,
+    pub status: String,
+    pub action_type: Option<String>,
+    pub tool_name: Option<String>,
+    pub tool_arguments: Option<String>,
+    pub tool_success: Option<bool>,
+    pub tool_result: Option<String>,
+    pub message: Option<String>,
+    pub retry_count: u32,
+    pub error: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct AgentEventRow {
+    pub id: String,
+    pub run_id: String,
+    pub task_id: Option<String>,
+    pub step: Option<u32>,
+    pub event_type: String,
+    pub payload_json: Option<String>,
+    pub created_at: String,
+}
+
+pub fn upsert_agent_run(conn: &rusqlite::Connection, row: &AgentRunRow) -> anyhow::Result<()> {
+    conn.execute(
+        r#"
+        INSERT INTO agent_runs (id, task_id, session_id, status, current_step, total_retries, max_steps, final_message, waiting_for_user, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        ON CONFLICT(id) DO UPDATE SET
+            task_id=excluded.task_id,
+            session_id=excluded.session_id,
+            status=excluded.status,
+            current_step=excluded.current_step,
+            total_retries=excluded.total_retries,
+            max_steps=excluded.max_steps,
+            final_message=excluded.final_message,
+            waiting_for_user=excluded.waiting_for_user,
+            updated_at=excluded.updated_at
+        "#,
+        params![
+            row.id,
+            row.task_id,
+            row.session_id,
+            row.status,
+            row.current_step,
+            row.total_retries,
+            row.max_steps,
+            row.final_message,
+            row.waiting_for_user,
+            row.updated_at,
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn replace_agent_steps(
+    conn: &rusqlite::Connection,
+    run_id: &str,
+    rows: &[AgentStepRow],
+) -> anyhow::Result<()> {
+    conn.execute("DELETE FROM agent_steps WHERE run_id = ?1", params![run_id])?;
+    for row in rows {
+        conn.execute(
+            r#"
+            INSERT INTO agent_steps (id, run_id, step, title, status, action_type, tool_name, tool_arguments, tool_success, tool_result, message, retry_count, error, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            "#,
+            params![
+                row.id,
+                row.run_id,
+                row.step,
+                row.title,
+                row.status,
+                row.action_type,
+                row.tool_name,
+                row.tool_arguments,
+                row.tool_success.map(|v| if v { 1 } else { 0 }),
+                row.tool_result,
+                row.message,
+                row.retry_count,
+                row.error,
+                row.updated_at,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+pub fn insert_agent_event(conn: &rusqlite::Connection, row: &AgentEventRow) -> anyhow::Result<()> {
+    conn.execute(
+        r#"
+        INSERT INTO agent_events (id, run_id, task_id, step, event_type, payload_json, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "#,
+        params![
+            row.id,
+            row.run_id,
+            row.task_id,
+            row.step,
+            row.event_type,
+            row.payload_json,
+            row.created_at,
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn get_latest_agent_run_by_task(
+    conn: &rusqlite::Connection,
+    task_id: &str,
+) -> anyhow::Result<Option<AgentRunRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, task_id, session_id, status, current_step, total_retries, max_steps, final_message, waiting_for_user, updated_at FROM agent_runs WHERE task_id = ?1 ORDER BY updated_at DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query(params![task_id])?;
+    match rows.next()? {
+        Some(row) => Ok(Some(AgentRunRow {
+            id: row.get(0)?,
+            task_id: row.get(1)?,
+            session_id: row.get(2)?,
+            status: row.get(3)?,
+            current_step: row.get(4)?,
+            total_retries: row.get(5)?,
+            max_steps: row.get(6)?,
+            final_message: row.get(7)?,
+            waiting_for_user: row.get(8)?,
+            updated_at: row.get(9)?,
+        })),
+        None => Ok(None),
+    }
+}
+
+pub fn get_agent_run(conn: &rusqlite::Connection, run_id: &str) -> anyhow::Result<Option<AgentRunRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, task_id, session_id, status, current_step, total_retries, max_steps, final_message, waiting_for_user, updated_at FROM agent_runs WHERE id = ?1 LIMIT 1",
+    )?;
+    let mut rows = stmt.query(params![run_id])?;
+    match rows.next()? {
+        Some(row) => Ok(Some(AgentRunRow {
+            id: row.get(0)?,
+            task_id: row.get(1)?,
+            session_id: row.get(2)?,
+            status: row.get(3)?,
+            current_step: row.get(4)?,
+            total_retries: row.get(5)?,
+            max_steps: row.get(6)?,
+            final_message: row.get(7)?,
+            waiting_for_user: row.get(8)?,
+            updated_at: row.get(9)?,
+        })),
+        None => Ok(None),
+    }
+}
+
+pub fn list_agent_steps(conn: &rusqlite::Connection, run_id: &str) -> anyhow::Result<Vec<AgentStepRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, run_id, step, title, status, action_type, tool_name, tool_arguments, tool_success, tool_result, message, retry_count, error, updated_at FROM agent_steps WHERE run_id = ?1 ORDER BY step ASC",
+    )?;
+    let out = stmt
+        .query_map(params![run_id], |row| {
+            Ok(AgentStepRow {
+                id: row.get(0)?,
+                run_id: row.get(1)?,
+                step: row.get(2)?,
+                title: row.get(3)?,
+                status: row.get(4)?,
+                action_type: row.get(5)?,
+                tool_name: row.get(6)?,
+                tool_arguments: row.get(7)?,
+                tool_success: row.get::<_, Option<i32>>(8)?.map(|v| v != 0),
+                tool_result: row.get(9)?,
+                message: row.get(10)?,
+                retry_count: row.get(11)?,
+                error: row.get(12)?,
+                updated_at: row.get(13)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(out)
+}
+
+pub fn list_agent_events(conn: &rusqlite::Connection, run_id: &str) -> anyhow::Result<Vec<AgentEventRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, run_id, task_id, step, event_type, payload_json, created_at FROM agent_events WHERE run_id = ?1 ORDER BY created_at ASC",
+    )?;
+    let out = stmt
+        .query_map(params![run_id], |row| {
+            Ok(AgentEventRow {
+                id: row.get(0)?,
+                run_id: row.get(1)?,
+                task_id: row.get(2)?,
+                step: row.get(3)?,
+                event_type: row.get(4)?,
+                payload_json: row.get(5)?,
+                created_at: row.get(6)?,
             })
         })?
         .filter_map(|r| r.ok())

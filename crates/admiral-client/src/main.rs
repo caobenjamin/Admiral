@@ -63,6 +63,8 @@ fn main() {
             tauri_bridge::task_load_conversations,
             tauri_bridge::task_load_spec,
             tauri_bridge::task_list_run_reports,
+            tauri_bridge::agent_get_latest_run,
+            tauri_bridge::agent_get_run,
             tauri_bridge::agent_chat,
             tauri_bridge::agent_chat_stream,
         ])

@@ -7,7 +7,7 @@ use axum::{
 };
 use tower_http::cors::CorsLayer;
 
-use crate::api::{admin, auth, knowledge, llm, mapi, oauth};
+use crate::api::{admin, auth, knowledge, llm, mapi, oauth, task};
 use crate::middleware::request_log;
 use crate::state::AppState;
 
@@ -37,6 +37,7 @@ pub fn app(state: AppState) -> Router {
         .route("/api/v1/mapi/proxy", axum::routing::post(mapi::proxy))
         .route("/api/v1/llm/chat", axum::routing::post(llm::chat))
         .route("/api/v1/knowledge/query", axum::routing::post(knowledge::query))
+        .route("/api/v1/tasks/capabilities", get(task::capabilities))
         .route("/api/v1/admin/invites", axum::routing::get(admin::list_invites).post(admin::create_invite))
         .route("/api/v1/admin/users/{id}/extend", axum::routing::post(admin::extend_user))
         .route("/api/v1/admin/knowledge/ingest", axum::routing::post(admin::knowledge_ingest))

@@ -179,8 +179,71 @@ export type StreamEvent =
   | { type: "status"; stage: string; message: string; level?: "info" | "warn" | "error" }
   | { type: "tool_use"; name: string }
   | { type: "tool_result"; name: string; success: boolean }
+  | { type: "run_state"; run: AgentRunState }
   | { type: "done" }
   | { type: "error"; message: string };
+
+export type AgentRunStatus =
+  | "queued"
+  | "running"
+  | "waiting_tool"
+  | "waiting_user"
+  | "retrying"
+  | "paused"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export type AgentStepStatus =
+  | "pending"
+  | "running"
+  | "waiting_tool"
+  | "retrying"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export interface AgentStepState {
+  step: number;
+  title: string;
+  status: AgentStepStatus;
+  action_type?: string | null;
+  tool_name?: string | null;
+  tool_arguments?: unknown;
+  tool_success?: boolean | null;
+  tool_result?: unknown;
+  message?: string | null;
+  retry_count: number;
+  error?: string | null;
+}
+
+export interface AgentRunState {
+  run_id: string;
+  task_id?: string | null;
+  session_id: string;
+  status: AgentRunStatus;
+  current_step: number;
+  total_retries: number;
+  max_steps: number;
+  steps: AgentStepState[];
+  final_message?: string | null;
+  waiting_for_user?: string | null;
+}
+
+export interface AgentEvent {
+  id: string;
+  run_id: string;
+  task_id?: string | null;
+  step?: number | null;
+  event_type: string;
+  payload_json?: string | null;
+  created_at: string;
+}
+
+export interface AgentRunDetail {
+  run: AgentRunState;
+  events: AgentEvent[];
+}
 
 // ---------- Agent ----------
 export interface AgentResponse {
@@ -191,4 +254,5 @@ export interface AgentResponse {
     task_id: string | null;
     messages: { role: string; content?: string | null; tool_calls?: unknown; name?: string | null; tool_call_id?: string | null }[];
   };
+  run: AgentRunState;
 }

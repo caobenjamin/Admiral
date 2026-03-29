@@ -76,6 +76,7 @@ impl ContextAssembler {
         &self,
         session: &Session,
         knowledge_snippets: &[String],
+        runtime_notes: &[String],
     ) -> serde_json::Value {
         let mut system_parts = vec![self.profile.system_prompt.clone()];
 
@@ -148,11 +149,49 @@ impl ContextAssembler {
             );
         }
 
-        if !self.skill_registry.build_llm_tools().is_empty() {
-            system_parts.push(
-                "## Available Tools\n\nYou have tools available. Call them by exact function name when needed."
-                    .to_string(),
+        let llm_tools = self.skill_registry.build_llm_tools();
+        if !llm_tools.is_empty() {
+            let mut tool_section = String::from(
+                "## Available Tools\n\n\
+                You can only choose tools from this list. When returning `call_tool`, use the exact tool name and JSON arguments.\n",
             );
+            for tool in llm_tools {
+                let schema = tool
+                    .function
+                    .parameters
+                    .as_ref()
+                    .map(|v| serde_json::to_string_pretty(v).unwrap_or_else(|_| "{}".to_string()))
+                    .unwrap_or_else(|| "{}".to_string());
+                tool_section.push_str(&format!(
+                    "\n### {}\n{}\nParameters schema:\n```json\n{}\n```\n",
+                    tool.function.name,
+                    tool.function.description,
+                    schema
+                ));
+            }
+            system_parts.push(tool_section);
+        }
+
+        system_parts.push(
+            "## Action Protocol\n\n\
+            In every turn, respond with exactly one JSON object and nothing else.\n\
+            Allowed actions:\n\
+            - {\"type\":\"call_tool\",\"tool_name\":\"exact_name\",\"arguments\":{...},\"reason\":\"short reason\"}\n\
+            - {\"type\":\"respond\",\"message\":\"final answer to user\"}\n\
+            - {\"type\":\"ask_user\",\"message\":\"specific question for missing info\"}\n\
+            Rules:\n\
+            - Never output markdown fences.\n\
+            - Never mix prose outside JSON.\n\
+            - If the task can be completed with tools, prefer `call_tool`.\n\
+            - For multi-day report tasks, fetch one day per tool call and stop calling tools after all required dates are finished."
+                .to_string(),
+        );
+
+        if !runtime_notes.is_empty() {
+            system_parts.push(format!(
+                "## Runtime Notes\n\n{}",
+                runtime_notes.join("\n\n")
+            ));
         }
 
         let system_content = system_parts.join("\n\n");

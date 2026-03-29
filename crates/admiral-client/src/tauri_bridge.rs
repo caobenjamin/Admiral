@@ -7,7 +7,7 @@ use crate::db;
 use crate::network::api_client::ApiClient;
 use crate::agent::memory::MemoryStore;
 use crate::agent::memory_updater;
-use crate::agent::runtime::{AgentResponse, AgentRuntime, StreamEvent};
+use crate::agent::runtime::{AgentResponse, AgentRunState, AgentRunStatus, AgentRuntime, AgentStepState, AgentStepStatus, StreamEvent};
 use crate::agent::context::{Message, Session};
 use crate::skill::registry::SkillRegistry;
 use crate::task::engine::TaskEngine;
@@ -407,6 +407,12 @@ pub struct ConversationMessage {
     pub timestamp: String,
 }
 
+#[derive(serde::Serialize)]
+pub struct AgentRunDetail {
+    pub run: AgentRunState,
+    pub events: Vec<db::models::AgentEventRow>,
+}
+
 #[tauri::command]
 pub async fn task_load_conversations(
     task_id: String,
@@ -427,6 +433,36 @@ pub async fn task_load_conversations(
         .collect())
 }
 
+#[tauri::command]
+pub async fn agent_get_latest_run(task_id: String) -> Result<Option<AgentRunDetail>, String> {
+    let db_path = db::models::db_path();
+    let conn = db::models::open_ro(&db_path).map_err(|e| e.to_string())?;
+    let Some(run_row) = db::models::get_latest_agent_run_by_task(&conn, &task_id).map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let steps = db::models::list_agent_steps(&conn, &run_row.id).map_err(|e| e.to_string())?;
+    let events = db::models::list_agent_events(&conn, &run_row.id).map_err(|e| e.to_string())?;
+    Ok(Some(AgentRunDetail {
+        run: map_agent_run_detail(run_row, steps)?,
+        events,
+    }))
+}
+
+#[tauri::command]
+pub async fn agent_get_run(run_id: String) -> Result<Option<AgentRunDetail>, String> {
+    let db_path = db::models::db_path();
+    let conn = db::models::open_ro(&db_path).map_err(|e| e.to_string())?;
+    let Some(run_row) = db::models::get_agent_run(&conn, &run_id).map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let steps = db::models::list_agent_steps(&conn, &run_row.id).map_err(|e| e.to_string())?;
+    let events = db::models::list_agent_events(&conn, &run_row.id).map_err(|e| e.to_string())?;
+    Ok(Some(AgentRunDetail {
+        run: map_agent_run_detail(run_row, steps)?,
+        events,
+    }))
+}
+
 // ---------- Task spec ----------
 
 #[tauri::command]
@@ -441,6 +477,51 @@ pub async fn task_list_run_reports(task_id: String) -> Result<Vec<String>, Strin
     let id = Uuid::parse_str(&task_id).map_err(|e| e.to_string())?;
     let memory = MemoryStore::new().map_err(|e| e.to_string())?;
     memory.list_run_reports(id).map_err(|e| e.to_string())
+}
+
+fn parse_agent_run_status(value: &str) -> Result<AgentRunStatus, String> {
+    serde_json::from_str(&format!("\"{}\"", value)).map_err(|e| e.to_string())
+}
+
+fn parse_agent_step_status(value: &str) -> Result<AgentStepStatus, String> {
+    serde_json::from_str(&format!("\"{}\"", value)).map_err(|e| e.to_string())
+}
+
+fn map_agent_run_detail(
+    run_row: db::models::AgentRunRow,
+    step_rows: Vec<db::models::AgentStepRow>,
+) -> Result<AgentRunState, String> {
+    let steps = step_rows
+        .into_iter()
+        .map(|row| {
+            Ok(AgentStepState {
+                step: row.step,
+                title: row.title,
+                status: parse_agent_step_status(&row.status)?,
+                action_type: row.action_type,
+                tool_name: row.tool_name,
+                tool_arguments: row.tool_arguments.and_then(|s| serde_json::from_str(&s).ok()),
+                tool_success: row.tool_success,
+                tool_result: row.tool_result.and_then(|s| serde_json::from_str(&s).ok()),
+                message: row.message,
+                retry_count: row.retry_count,
+                error: row.error,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    Ok(AgentRunState {
+        run_id: run_row.id,
+        task_id: run_row.task_id,
+        session_id: run_row.session_id,
+        status: parse_agent_run_status(&run_row.status)?,
+        current_step: run_row.current_step,
+        total_retries: run_row.total_retries,
+        max_steps: run_row.max_steps,
+        steps,
+        final_message: run_row.final_message,
+        waiting_for_user: run_row.waiting_for_user,
+    })
 }
 
 // ---------- Agent chat helpers ----------
@@ -461,6 +542,15 @@ fn load_session(task_id: &Option<String>) -> (String, Option<Uuid>, Vec<Message>
             if let Ok(rows) = db::models::load_conversations_by_task(&conn, tid) {
                 for row in rows {
                     let tool_calls = row.tool_calls.and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+                    let has_content = !row.content.trim().is_empty();
+                    let has_tool_calls = tool_calls
+                        .as_ref()
+                        .and_then(|v| v.as_array())
+                        .map(|arr| !arr.is_empty())
+                        .unwrap_or(false);
+                    if row.role == "assistant" && !has_content && !has_tool_calls {
+                        continue;
+                    }
                     if row.role == "assistant" {
                         if let Some(arr) = tool_calls.as_ref().and_then(|v| v.as_array()) {
                             for tc in arr {
@@ -523,6 +613,12 @@ fn persist_new_messages(
     let db_path = db::models::db_path();
     if let Ok(conn) = db::models::open_rw(&db_path) {
         for msg in new_messages {
+            if msg.role == "assistant"
+                && msg.content.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true)
+                && msg.tool_calls.as_ref().and_then(|v| v.as_array()).map(|arr| arr.is_empty()).unwrap_or(true)
+            {
+                continue;
+            }
             let row = db::models::ConversationRow {
                 id: Uuid::new_v4().to_string(),
                 task_id: task_id.clone(),
@@ -618,9 +714,12 @@ pub async fn agent_chat_stream(
             let message = e.to_string();
             error!(error = %message, "agent_chat_stream failed");
             let _ = tx.send(StreamEvent::Error { message: message.clone() }).await;
+            drop(tx);
+            let _ = forward_task.await;
             return Err(message);
         }
     };
+    drop(tx);
     let _ = forward_task.await;
 
     persist_new_messages(&response, msg_count_before, &task_id, &session_id);
@@ -661,7 +760,7 @@ pub fn create_app_state() -> AppState {
     let config = ClientConfig::from_env();
     let store = Arc::new(PlainFileCredentialStore::from_config(&config));
     let api_client = Arc::new(ApiClient::new(config.api_base_url));
-    let auth = AuthContext::new(Arc::clone(&api_client), store);
+    let auth = Arc::new(AuthContext::new(Arc::clone(&api_client), store));
 
     let skill_registry = Arc::new(SkillRegistry::new());
     let _ = skill_registry.load_from_default_dir();
@@ -681,23 +780,29 @@ pub fn create_app_state() -> AppState {
 
     // Initialize and start the task scheduler
     let task_engine_for_scheduler = Arc::clone(&task_engine);
+    let auth_for_scheduler = Arc::clone(&auth);
     let scheduler = Arc::new(Scheduler::new(Arc::new(move |task_id, _task| {
         let engine = Arc::clone(&task_engine_for_scheduler);
+        let auth = Arc::clone(&auth_for_scheduler);
         tauri::async_runtime::spawn(async move {
             let mut task = match engine.get_task(task_id) {
                 Ok(Some(t)) => t,
                 _ => return,
             };
+            let token = match auth.get_access_token() {
+                Ok(token) => token,
+                Err(_) => return,
+            };
             let _ = engine.run(
                 &mut task,
                 admiral_types::task::RunType::Production,
-                None,
+                Some(&token),
                 None,
             ).await;
         });
     })));
     AppState {
-        auth: Arc::new(auth),
+        auth,
         api_client,
         task_engine,
         agent_runtime,

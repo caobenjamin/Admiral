@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import * as tauri from "../lib/tauri";
-import type { AgentResponse, StreamEvent } from "../lib/types";
+import type { AgentResponse, AgentRunState, StreamEvent } from "../lib/types";
 
 export interface UseAgentOptions {
   onStatus?: (stage: string, message: string, level?: "info" | "warn" | "error") => void;
   onDelta?: (content: string) => void;
   onToolUse?: (name: string) => void;
   onToolResult?: (name: string, success: boolean) => void;
+  onRunUpdate?: (run: AgentRunState) => void;
   onDone?: () => void;
   onError?: (message: string) => void;
 }
@@ -53,6 +54,10 @@ export function useAgent(taskId?: string | null, options?: UseAgentOptions) {
           case "tool_result":
             hasVisibleStreamSignal = true;
             opts?.onToolResult?.(payload.name, payload.success);
+            break;
+          case "run_state":
+            hasVisibleStreamSignal = true;
+            opts?.onRunUpdate?.(payload.run);
             break;
           case "done":
             opts?.onDone?.();

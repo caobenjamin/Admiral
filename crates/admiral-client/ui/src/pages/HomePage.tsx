@@ -9,7 +9,7 @@ import { TaskDetail } from "@/components/task/TaskDetail";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageBubble, type ChatMessage, type MessageRole } from "@/components/chat/MessageBubble";
 import * as tauri from "@/lib/tauri";
-import type { LicenseResponse } from "@/lib/types";
+import type { AgentRunState, AgentStepState, LicenseResponse } from "@/lib/types";
 
 type LicenseStatus = "loading" | "active" | "inactive" | "check_failed";
 
@@ -107,6 +107,7 @@ export function HomePage() {
   const quickActions = useMemo(() => getQuickActions(currentTask), [currentTask]);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [agentRun, setAgentRun] = useState<AgentRunState | null>(null);
   const [showTaskDetail, setShowTaskDetail] = useState(true);
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>("loading");
   const prevTaskIdRef = useRef<string | null>(null);
@@ -147,6 +148,9 @@ export function HomePage() {
     },
     onToolResult(name, success) {
       appendProcessMessage("system", `${success ? "工具完成" : "工具失败"}\n${name}`);
+    },
+    onRunUpdate(run) {
+      setAgentRun(run);
     },
     onError(message) {
       appendProcessMessage("system", `流错误\n${message}`);
@@ -201,6 +205,7 @@ export function HomePage() {
 
     if (!selectedTaskId) {
       setMessages([]);
+      setAgentRun(null);
       return;
     }
 
@@ -216,6 +221,13 @@ export function HomePage() {
     }).catch(() => {
       setMessages([]);
     });
+    tauri.agentGetLatestRun(selectedTaskId)
+      .then((detail) => {
+        setAgentRun(detail?.run ?? null);
+      })
+      .catch(() => {
+        setAgentRun(null);
+      });
   }, [selectedTaskId]);
 
   const handleSend = useCallback(
@@ -247,6 +259,7 @@ export function HomePage() {
 
       try {
         const response = await chat(content);
+        setAgentRun(response.run);
         const list = sessionMessagesToChatMessages(response.session.messages);
         const processIds = new Set(processMsgIdsRef.current);
         setMessages((prev) => {
@@ -351,6 +364,58 @@ export function HomePage() {
             </div>
           )}
 
+          {agentRun && (
+            <div
+              style={{
+                marginBottom: 10,
+                border: "1px solid var(--admiral-border)",
+                borderRadius: 12,
+                background: "#ffffff",
+                padding: 12,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--admiral-text-primary)" }}>执行过程</div>
+                  <div style={{ fontSize: 12, color: "var(--admiral-text-secondary)", marginTop: 2 }}>
+                    Run {agentRun.run_id.slice(0, 8)} · Step {agentRun.current_step}/{agentRun.max_steps} · 重试 {agentRun.total_retries}
+                  </div>
+                </div>
+                <span className={`admiral-chip${agentRun.status === "failed" ? " admiral-chip-danger" : agentRun.status === "succeeded" ? " admiral-chip-primary" : ""}`}>
+                  {formatRunStatus(agentRun.status)}
+                </span>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 220, overflowY: "auto" }}>
+                {agentRun.steps.map((step) => (
+                  <div
+                    key={`${agentRun.run_id}-${step.step}`}
+                    style={{
+                      border: "1px solid var(--admiral-border)",
+                      borderRadius: 10,
+                      padding: "9px 10px",
+                      background: step.status === "running" || step.status === "retrying" ? "#f8fbff" : "#fbfdff",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--admiral-text-primary)" }}>
+                        {step.title}
+                        {step.tool_name ? ` · ${step.tool_name}` : step.action_type ? ` · ${step.action_type}` : ""}
+                      </div>
+                      <span style={{ fontSize: 12, color: getStepColor(step) }}>{formatStepStatus(step.status)}</span>
+                    </div>
+                    {(step.message || step.error || step.retry_count > 0) && (
+                      <div style={{ marginTop: 5, fontSize: 12, color: "var(--admiral-text-secondary)", whiteSpace: "pre-wrap" }}>
+                        {step.message || step.error}
+                        {step.retry_count > 0 ? ` · retry ${step.retry_count}` : ""}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div
             style={{
               border: "1px solid var(--admiral-border)",
@@ -421,4 +486,59 @@ export function HomePage() {
       </div>
     </div>
   );
+}
+
+function formatRunStatus(status: AgentRunState["status"]): string {
+  switch (status) {
+    case "queued":
+      return "已排队";
+    case "running":
+      return "运行中";
+    case "waiting_tool":
+      return "等待工具";
+    case "waiting_user":
+      return "等待输入";
+    case "retrying":
+      return "重试中";
+    case "paused":
+      return "已暂停";
+    case "succeeded":
+      return "已完成";
+    case "failed":
+      return "失败";
+    case "cancelled":
+      return "已取消";
+  }
+}
+
+function formatStepStatus(status: AgentStepState["status"]): string {
+  switch (status) {
+    case "pending":
+      return "待执行";
+    case "running":
+      return "执行中";
+    case "waiting_tool":
+      return "等工具";
+    case "retrying":
+      return "重试中";
+    case "succeeded":
+      return "完成";
+    case "failed":
+      return "失败";
+    case "cancelled":
+      return "取消";
+  }
+}
+
+function getStepColor(step: AgentStepState): string {
+  switch (step.status) {
+    case "failed":
+      return "#b42318";
+    case "succeeded":
+      return "#0f6cbd";
+    case "retrying":
+      return "#b54708";
+    default:
+      return "var(--admiral-text-secondary)";
+  }
 }

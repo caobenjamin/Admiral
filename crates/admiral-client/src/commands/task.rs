@@ -112,7 +112,12 @@ pub async fn approve_operation(
 
     db::models::clear_pending_approvals(&conn, task_id).map_err(|e| e.to_string())?;
 
-    resume_task(engine, auth, task_id, Some(pending.step_seq), RunType::Production, None).await
+    let run_type = db::models::get_task_run(&conn, pending.run_id)
+        .map_err(|e| e.to_string())?
+        .map(|run| run.run_type)
+        .unwrap_or(RunType::Production);
+
+    resume_task(engine, auth, task_id, Some(pending.step_seq), run_type, None).await
 }
 
 /// Reject a pending operation -> cancel the task.

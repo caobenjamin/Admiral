@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use std::path::Path;
 use tracing::info;
 
-const SCHEMA_VERSION: u32 = 4;
+const SCHEMA_VERSION: u32 = 5;
 
 /// Run all migrations. Creates DB file and tables if they don't exist.
 pub fn run_migrations(db_path: &Path) -> anyhow::Result<()> {
@@ -26,6 +26,9 @@ pub fn run_migrations(db_path: &Path) -> anyhow::Result<()> {
     }
     if current <= 3 {
         migrate_v3_to_v4(&conn)?;
+    }
+    if current <= 4 {
+        migrate_v4_to_v5(&conn)?;
     }
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     Ok(())
@@ -246,5 +249,59 @@ fn migrate_v3_to_v4(conn: &Connection) -> anyhow::Result<()> {
     }
 
     info!("SQLite schema migrated to v4 (conversation tool metadata)");
+    Ok(())
+}
+
+fn migrate_v4_to_v5(conn: &Connection) -> anyhow::Result<()> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS agent_runs (
+            id TEXT PRIMARY KEY,
+            task_id TEXT,
+            session_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            current_step INTEGER NOT NULL DEFAULT 0,
+            total_retries INTEGER NOT NULL DEFAULT 0,
+            max_steps INTEGER NOT NULL DEFAULT 0,
+            final_message TEXT,
+            waiting_for_user TEXT,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_runs_task_updated ON agent_runs(task_id, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS agent_steps (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            step INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            status TEXT NOT NULL,
+            action_type TEXT,
+            tool_name TEXT,
+            tool_arguments TEXT,
+            tool_success INTEGER,
+            tool_result TEXT,
+            message TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (run_id) REFERENCES agent_runs(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_steps_run_step ON agent_steps(run_id, step);
+
+        CREATE TABLE IF NOT EXISTS agent_events (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            task_id TEXT,
+            step INTEGER,
+            event_type TEXT NOT NULL,
+            payload_json TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (run_id) REFERENCES agent_runs(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_events_run_created ON agent_events(run_id, created_at);
+        "#,
+    )?;
+
+    info!("SQLite schema migrated to v5 (agent runtime persistence)");
     Ok(())
 }

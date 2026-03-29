@@ -17,6 +17,7 @@ import type {
   PendingApproval,
   OperationPermission,
   AgentResponse,
+  AgentRunDetail,
 } from "./types";
 
 export async function authRegister(req: {
@@ -242,4 +243,12 @@ export async function agentChatStream(
   taskId?: string | null
 ): Promise<AgentResponse> {
   return invoke("agent_chat_stream", { message, taskId: taskId ?? null });
+}
+
+export async function agentGetLatestRun(taskId: string): Promise<AgentRunDetail | null> {
+  return invoke("agent_get_latest_run", { taskId });
+}
+
+export async function agentGetRun(runId: string): Promise<AgentRunDetail | null> {
+  return invoke("agent_get_run", { runId });
 }
