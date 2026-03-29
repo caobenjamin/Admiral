@@ -53,6 +53,9 @@ pub enum AppError {
 
     #[error("upstream error: {0}")]
     Upstream(String),
+
+    #[error("license inactive or expired")]
+    LicenseInactive { expires_at: Option<String> },
 }
 
 #[derive(Serialize)]
@@ -61,6 +64,8 @@ struct ErrorBody {
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_accounts: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires_at: Option<String>,
 }
 
 impl IntoResponse for AppError {
@@ -73,6 +78,7 @@ impl IntoResponse for AppError {
                         code: "ACCOUNT_LIMIT_EXCEEDED".to_string(),
                         message: format!("已达账户数量上限（{}），请删除部分账户后再添加。", max),
                         max_accounts: Some(*max),
+                        expires_at: None,
                     }),
                 )
                     .into_response()
@@ -87,6 +93,7 @@ impl IntoResponse for AppError {
             }
             AppError::InvalidToken => (StatusCode::UNAUTHORIZED, "INVALID_TOKEN", None),
             AppError::Upstream(_) => (StatusCode::BAD_GATEWAY, "UPSTREAM_ERROR", None),
+            AppError::LicenseInactive { .. } => (StatusCode::FORBIDDEN, "LICENSE_INACTIVE", None),
             AppError::Internal(_) | AppError::Config(_) | AppError::Db(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", None)
             }
@@ -95,6 +102,10 @@ impl IntoResponse for AppError {
             code: code.to_string(),
             message: self.to_string(),
             max_accounts,
+            expires_at: match &self {
+                AppError::LicenseInactive { expires_at } => expires_at.clone(),
+                _ => None,
+            },
         };
         (status, Json(body)).into_response()
     }

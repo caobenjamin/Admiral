@@ -8,9 +8,11 @@ use axum::{
     response::Response,
     Json,
 };
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use tracing::{info, warn};
 
 use crate::error::Result;
+use crate::entities::entitlement;
 use crate::state::AppState;
 
 const DB_BODY_MAX: usize = 65535;
@@ -21,6 +23,24 @@ pub async fn chat(
     Json(req): Json<LlmChatRequest>,
 ) -> Result<Response> {
     let user_id = auth_user.0;
+    let entitlement = entitlement::Entity::find()
+        .filter(entitlement::Column::UserId.eq(user_id))
+        .filter(entitlement::Column::IsActive.eq(true))
+        .order_by_desc(entitlement::Column::ExpiresAt)
+        .one(&state.db)
+        .await?;
+    match entitlement {
+        Some(ent) if ent.expires_at.timestamp_millis() > chrono::Utc::now().timestamp_millis() => {}
+        Some(ent) => {
+            return Err(crate::error::AppError::LicenseInactive {
+                expires_at: Some(ent.expires_at.to_rfc3339()),
+            });
+        }
+        None => {
+            return Err(crate::error::AppError::LicenseInactive { expires_at: None });
+        }
+    }
+
     let llm = state
         .llm
         .as_ref()

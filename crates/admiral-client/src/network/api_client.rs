@@ -70,6 +70,21 @@ impl ApiClient {
         })
     }
 
+    async fn parse_error_response(resp: reqwest::Response, fallback_code: &str) -> ApiError {
+        let status = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        let (code, message) = if let Ok(b) = serde_json::from_str::<ErrorBody>(&body) {
+            (
+                if b.code.is_empty() { fallback_code.to_string() } else { b.code },
+                if b.message.is_empty() { body.clone() } else { b.message },
+            )
+        } else {
+            (fallback_code.to_string(), body)
+        };
+
+        ApiError::Server { status, code, message }
+    }
+
     /// Call with optional Bearer token. Returns response or ApiError (including Unauthorized for 401).
     pub async fn request_with_token(
         &self,
@@ -308,13 +323,7 @@ impl ApiClient {
             .send()
             .await?;
         if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let bytes = resp.bytes().await?.to_vec();
-            return Err(ApiError::Server {
-                status,
-                code: "LLM_ERROR".to_string(),
-                message: String::from_utf8_lossy(&bytes).to_string(),
-            });
+            return Err(Self::parse_error_response(resp, "LLM_ERROR").await);
         }
         let bytes = resp.bytes().await?.to_vec();
         Ok(bytes)
@@ -341,13 +350,7 @@ impl ApiClient {
             .send()
             .await?;
         if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let bytes = resp.bytes().await?.to_vec();
-            return Err(ApiError::Server {
-                status,
-                code: "LLM_ERROR".to_string(),
-                message: String::from_utf8_lossy(&bytes).to_string(),
-            });
+            return Err(Self::parse_error_response(resp, "LLM_ERROR").await);
         }
         Ok(resp)
     }
