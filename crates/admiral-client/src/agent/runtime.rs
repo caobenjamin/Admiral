@@ -931,42 +931,41 @@ fn agent_action_response_format() -> Value {
             "name": "agent_action",
             "strict": true,
             "schema": {
-                "oneOf": [
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": ["call_tool", "respond", "ask_user", "finish"]
+                    },
+                    "tool_name": { "type": "string" },
+                    "arguments": { "type": "object", "additionalProperties": true },
+                    "reason": { "type": "string" },
+                    "message": { "type": "string" }
+                },
+                "required": ["type"],
+                "anyOf": [
                     {
-                        "type": "object",
-                        "additionalProperties": false,
                         "properties": {
-                            "type": { "const": "call_tool" },
-                            "tool_name": { "type": "string", "minLength": 1 },
-                            "arguments": { "type": "object", "additionalProperties": true },
-                            "reason": { "type": "string" }
+                            "type": { "const": "call_tool" }
                         },
                         "required": ["type", "tool_name", "arguments"]
                     },
                     {
-                        "type": "object",
-                        "additionalProperties": false,
                         "properties": {
-                            "type": { "const": "respond" },
-                            "message": { "type": "string", "minLength": 1 }
+                            "type": { "const": "respond" }
                         },
                         "required": ["type", "message"]
                     },
                     {
-                        "type": "object",
-                        "additionalProperties": false,
                         "properties": {
-                            "type": { "const": "ask_user" },
-                            "message": { "type": "string", "minLength": 1 }
+                            "type": { "const": "ask_user" }
                         },
                         "required": ["type", "message"]
                     },
                     {
-                        "type": "object",
-                        "additionalProperties": false,
                         "properties": {
-                            "type": { "const": "finish" },
-                            "message": { "type": "string", "minLength": 1 }
+                            "type": { "const": "finish" }
                         },
                         "required": ["type", "message"]
                     }
