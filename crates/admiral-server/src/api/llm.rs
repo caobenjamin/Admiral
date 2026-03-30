@@ -17,6 +17,44 @@ use crate::state::AppState;
 
 const DB_BODY_MAX: usize = 65535;
 
+fn normalize_response_format_for_model(model: &str, response_format: Option<&serde_json::Value>) -> Option<serde_json::Value> {
+    let response_format = response_format?.clone();
+
+    if model == "deepseek-chat"
+        && response_format
+            .get("type")
+            .and_then(|v| v.as_str())
+            .is_some_and(|t| t == "json_schema")
+    {
+        return Some(serde_json::json!({ "type": "json_object" }));
+    }
+
+    Some(response_format)
+}
+
+fn build_upstream_body(req: &LlmChatRequest) -> serde_json::Value {
+    // 联调阶段固定使用 deepseek-chat，忽略请求中的 model
+    let model = "deepseek-chat";
+    let mut body_obj = serde_json::map::Map::new();
+    body_obj.insert("messages".to_string(), req.messages.clone());
+    body_obj.insert("stream".to_string(), serde_json::json!(req.stream));
+    body_obj.insert("model".to_string(), serde_json::json!(model));
+    body_obj.insert(
+        "max_tokens".to_string(),
+        serde_json::json!(req.max_tokens.unwrap_or(4096)),
+    );
+    if let Some(ref t) = req.tools {
+        body_obj.insert("tools".to_string(), t.clone());
+    }
+    if let Some(ref tc) = req.tool_choice {
+        body_obj.insert("tool_choice".to_string(), tc.clone());
+    }
+    if let Some(rf) = normalize_response_format_for_model(model, req.response_format.as_ref()) {
+        body_obj.insert("response_format".to_string(), rf);
+    }
+    serde_json::Value::Object(body_obj)
+}
+
 pub async fn chat(
     State(state): State<AppState>,
     auth_user: crate::middleware::auth_guard::AuthUser,
@@ -45,25 +83,7 @@ pub async fn chat(
         .llm
         .as_ref()
         .ok_or(crate::error::AppError::BadRequest("LLM not configured".into()))?;
-    // 联调阶段固定使用 deepseek-chat，忽略请求中的 model
-    let mut body_obj = serde_json::map::Map::new();
-    body_obj.insert("messages".to_string(), req.messages.clone());
-    body_obj.insert("stream".to_string(), serde_json::json!(req.stream));
-    body_obj.insert("model".to_string(), serde_json::json!("deepseek-chat"));
-    body_obj.insert(
-        "max_tokens".to_string(),
-        serde_json::json!(req.max_tokens.unwrap_or(4096)),
-    );
-    if let Some(ref t) = req.tools {
-        body_obj.insert("tools".to_string(), t.clone());
-    }
-    if let Some(ref tc) = req.tool_choice {
-        body_obj.insert("tool_choice".to_string(), tc.clone());
-    }
-    if let Some(ref rf) = req.response_format {
-        body_obj.insert("response_format".to_string(), rf.clone());
-    }
-    let body = serde_json::Value::Object(body_obj);
+    let body = build_upstream_body(&req);
     let request_url = format!("{}/v1/chat/completions", llm.base_url);
     let request_body_str = crate::utils::truncate_for_db(
         &serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string()),
@@ -167,5 +187,63 @@ pub async fn chat(
                 Err(crate::error::AppError::Upstream(err_msg))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_upstream_body, normalize_response_format_for_model};
+    use admiral_types::api::LlmChatRequest;
+    use serde_json::json;
+
+    #[test]
+    fn downgrades_json_schema_for_deepseek_chat() {
+        let response_format = json!({
+            "type": "json_schema",
+            "json_schema": {
+                "name": "agent_action",
+                "strict": true,
+                "schema": { "type": "object" }
+            }
+        });
+
+        let normalized = normalize_response_format_for_model("deepseek-chat", Some(&response_format));
+
+        assert_eq!(normalized, Some(json!({ "type": "json_object" })));
+    }
+
+    #[test]
+    fn preserves_non_schema_response_format_for_deepseek_chat() {
+        let response_format = json!({ "type": "json_object" });
+
+        let normalized = normalize_response_format_for_model("deepseek-chat", Some(&response_format));
+
+        assert_eq!(normalized, Some(response_format));
+    }
+
+    #[test]
+    fn build_upstream_body_uses_fixed_model_and_normalized_response_format() {
+        let req = LlmChatRequest {
+            messages: json!([{ "role": "user", "content": "hi" }]),
+            stream: false,
+            model: Some("gpt-4.1".to_string()),
+            max_tokens: None,
+            tools: None,
+            tool_choice: None,
+            response_format: Some(json!({
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "agent_action",
+                    "strict": true,
+                    "schema": { "type": "object" }
+                }
+            })),
+        };
+
+        let body = build_upstream_body(&req);
+
+        assert_eq!(body["model"], json!("deepseek-chat"));
+        assert_eq!(body["max_tokens"], json!(4096));
+        assert_eq!(body["response_format"], json!({ "type": "json_object" }));
     }
 }

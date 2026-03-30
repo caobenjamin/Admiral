@@ -1,0 +1,12 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="admiral-bg" x1="184" y1="152" x2="840" y2="872" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F6CBD"/>
+      <stop offset="1" stop-color="#00A3A3"/>
+    </linearGradient>
+  </defs>
+  <rect x="112" y="112" width="800" height="800" rx="220" fill="url(#admiral-bg)"/>
+  <path d="M512 752V432" stroke="white" stroke-width="88" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M320 592H224C224 751.117 352.883 880 512 880C671.117 880 800 751.117 800 592H704" stroke="white" stroke-width="88" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="512" cy="304" r="120" stroke="white" stroke-width="88"/>
+</svg>
