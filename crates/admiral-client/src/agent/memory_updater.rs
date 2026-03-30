@@ -134,12 +134,14 @@ async fn call_llm_for_updates(
     access_token: &str,
     prompt: &str,
 ) -> Vec<(String, String)> {
+    let llm_selection = crate::config::ClientConfig::from_env().llm_selection();
     let req = LlmChatRequest {
         messages: json!([
             {"role": "system", "content": prompt}
         ]),
         stream: false,
-        model: Some("fast".to_string()),
+        provider: Some(llm_selection.provider),
+        model: Some(llm_selection.model),
         max_tokens: Some(512),
         tools: None,
         tool_choice: None,

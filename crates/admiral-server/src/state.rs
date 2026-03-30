@@ -3,7 +3,7 @@
 use crate::config::AppConfig;
 use crate::infra::jwt::JwtKeys;
 use crate::middleware::auth_guard::AuthState;
-use crate::service::llm_router::LlmProxy;
+use crate::service::llm_router::LlmRouter;
 use crate::service::oauth_service::OauthService;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
@@ -14,7 +14,7 @@ pub struct AppState {
     pub jwt: Option<Arc<JwtKeys>>,
     pub config: AppConfig,
     pub oauth: Option<Arc<OauthService>>,
-    pub llm: Option<Arc<LlmProxy>>,
+    pub llm: Option<Arc<LlmRouter>>,
     pub http: reqwest::Client,
 }
 

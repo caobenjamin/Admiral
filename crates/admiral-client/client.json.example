@@ -1,4 +1,6 @@
 {
   "api_base_url": "https://admiral.example.com",
-  "credential_path": "credentials.json"
+  "credential_path": "credentials.json",
+  "llm_provider": "deepseek",
+  "llm_model": "deepseek-chat"
 }

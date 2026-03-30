@@ -1,7 +1,7 @@
 //! Tauri command bridge: managed state and invoke handlers.
 
 use crate::commands::auth::{self, AuthContext};
-use crate::config::ClientConfig;
+use crate::config::{ClientConfig, LlmSelection};
 use crate::credential::PlainFileCredentialStore;
 use crate::db;
 use crate::network::api_client::ApiClient;
@@ -165,9 +165,30 @@ pub async fn mapi_proxy(
 #[tauri::command]
 pub async fn llm_chat(
     state: tauri::State<'_, AppState>,
-    req: LlmChatRequest,
+    mut req: LlmChatRequest,
 ) -> Result<Vec<u8>, String> {
+    let config = ClientConfig::from_env();
+    if req.provider.as_deref().unwrap_or_default().is_empty() {
+        req.provider = Some(config.llm_provider.clone());
+    }
+    if req.model.as_deref().unwrap_or_default().is_empty() {
+        req.model = Some(config.llm_model.clone());
+    }
     crate::commands::llm::llm_chat(&state.auth, req)
+        .await
+        .map_err(err_string)
+}
+
+#[tauri::command]
+pub async fn list_llm_models(
+    state: tauri::State<'_, AppState>,
+    provider: String,
+) -> Result<admiral_types::api::LlmModelsResponse, String> {
+    let token = state.auth.get_access_token().map_err(err_string)?;
+    state
+        .auth
+        .api_client
+        .llm_list_models(&token, &provider)
         .await
         .map_err(err_string)
 }
@@ -197,6 +218,18 @@ pub fn get_server_url() -> String {
 pub fn set_server_url(url: String) -> Result<(), String> {
     let mut config = ClientConfig::from_env();
     config.set_api_base_url(url);
+    config.save().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_llm_selection() -> LlmSelection {
+    ClientConfig::from_env().llm_selection()
+}
+
+#[tauri::command]
+pub fn set_llm_selection(provider: String, model: String) -> Result<(), String> {
+    let mut config = ClientConfig::from_env();
+    config.set_llm_selection(provider, model);
     config.save().map_err(|e| e.to_string())
 }
 

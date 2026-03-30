@@ -136,6 +136,8 @@ pub struct LlmChatRequest {
     pub messages: serde_json::Value,
     #[serde(default)]
     pub stream: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
@@ -149,4 +151,20 @@ pub struct LlmChatRequest {
     /// Optional structured output schema; forwarded to upstream.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_format: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LlmModelInfo {
+    pub id: String,
+    pub provider: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owned_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created: Option<i64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LlmModelsResponse {
+    pub provider: String,
+    pub models: Vec<LlmModelInfo>,
 }

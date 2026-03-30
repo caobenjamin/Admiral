@@ -84,7 +84,9 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let llm = admiral_server::service::llm_router::from_env(
+        &app_config.llm.default_provider,
         secrets.deepseek_api_key.as_deref(),
+        secrets.openai_api_key.as_deref(),
     )
     .map(Arc::new);
 

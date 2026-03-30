@@ -64,6 +64,18 @@ export interface BoundAccountRecord {
   created_at: string;
 }
 
+export interface LlmModelInfo {
+  id: string;
+  provider: string;
+  owned_by?: string | null;
+  created?: number | null;
+}
+
+export interface LlmModelsResponse {
+  provider: string;
+  models: LlmModelInfo[];
+}
+
 // ---------- Task ----------
 export type TaskType = "instant" | "cron" | "heartbeat";
 

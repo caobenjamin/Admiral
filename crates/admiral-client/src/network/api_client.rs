@@ -355,6 +355,19 @@ impl ApiClient {
         Ok(resp)
     }
 
+    pub async fn llm_list_models(
+        &self,
+        access_token: &str,
+        provider: &str,
+    ) -> Result<LlmModelsResponse, ApiError> {
+        let path = format!("/api/v1/llm/models?provider={}", provider);
+        let resp = self
+            .request_with_token(reqwest::Method::GET, &path, Some(access_token), None)
+            .await?;
+        let out: LlmModelsResponse = resp.json().await?;
+        Ok(out)
+    }
+
     // ---------- Knowledge (RAG) ----------
 
     pub async fn knowledge_query(

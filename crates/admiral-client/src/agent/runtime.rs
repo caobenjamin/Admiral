@@ -637,9 +637,11 @@ impl AgentRuntime {
             .await;
 
             let messages = self.context.build(session, knowledge_snippets, runtime_notes);
+            let llm_selection = crate::config::ClientConfig::from_env().llm_selection();
             let req = LlmChatRequest {
                 messages,
                 stream: false,
+                provider: Some(llm_selection.provider),
                 model: self.context.profile.default_model.clone(),
                 max_tokens: Some(2048),
                 tools: None,

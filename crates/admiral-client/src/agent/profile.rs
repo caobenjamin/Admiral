@@ -31,9 +31,11 @@ pub fn load_profile() -> AgentProfile {
     let path = profile_path();
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(_) => return default_profile(),
+        Err(_) => return apply_client_llm_override(default_profile()),
     };
-    parse_profile(&content).unwrap_or_else(|_| default_profile())
+    parse_profile(&content)
+        .map(apply_client_llm_override)
+        .unwrap_or_else(|_| apply_client_llm_override(default_profile()))
 }
 
 fn default_profile() -> AgentProfile {
@@ -160,6 +162,14 @@ fn parse_profile(content: &str) -> anyhow::Result<AgentProfile> {
     };
     profile.system_prompt = build_system_prompt(&profile);
     Ok(profile)
+}
+
+fn apply_client_llm_override(mut profile: AgentProfile) -> AgentProfile {
+    let selection = crate::config::ClientConfig::from_env().llm_selection();
+    profile.default_model = Some(selection.model.clone());
+    profile.planning_model = Some(selection.model.clone());
+    profile.execution_model = Some(selection.model);
+    profile
 }
 
 fn build_system_prompt(p: &AgentProfile) -> String {

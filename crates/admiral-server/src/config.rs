@@ -87,6 +87,7 @@ pub struct EnvSecrets {
     pub bilibili_app_secret: String,
     pub bilibili_callback_url: String,
     pub deepseek_api_key: Option<String>,
+    pub openai_api_key: Option<String>,
 }
 
 impl EnvSecrets {
@@ -106,6 +107,7 @@ impl EnvSecrets {
         let bilibili_callback_url =
             std::env::var("ADMIRAL_BILI_CALLBACK_URL").unwrap_or_default();
         let deepseek_api_key = std::env::var("ADMIRAL_DEEPSEEK_API_KEY").ok();
+        let openai_api_key = std::env::var("ADMIRAL_OPENAI_API_KEY").ok();
 
         Ok(Self {
             database_url,
@@ -116,6 +118,7 @@ impl EnvSecrets {
             bilibili_app_secret,
             bilibili_callback_url,
             deepseek_api_key,
+            openai_api_key,
         })
     }
 }

@@ -42,6 +42,7 @@ pub async fn update_task_spec(
     api_client: &Arc<ApiClient>,
     access_token: &str,
 ) {
+    let llm_selection = crate::config::ClientConfig::from_env().llm_selection();
     let memory = match MemoryStore::new() {
         Ok(m) => m,
         Err(_) => return,
@@ -68,7 +69,8 @@ pub async fn update_task_spec(
             {"role": "system", "content": prompt}
         ]),
         stream: false,
-        model: Some("fast".to_string()),
+        provider: Some(llm_selection.provider),
+        model: Some(llm_selection.model),
         max_tokens: Some(1024),
         tools: None,
         tool_choice: None,

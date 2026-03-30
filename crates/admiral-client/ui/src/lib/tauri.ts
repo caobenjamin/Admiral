@@ -2,6 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  LlmModelsResponse,
   TokenResponse,
   UserInfo,
   LicenseResponse,
@@ -122,12 +123,30 @@ export async function mapiProxy(req: {
 export async function llmChat(
   messages: { role: string; content: string }[],
   stream?: boolean,
+  provider?: string,
   model?: string,
   maxTokens?: number
 ): Promise<number[]> {
   return invoke("llm_chat", {
-    req: { messages, stream: stream ?? false, model, max_tokens: maxTokens },
+    req: { messages, stream: stream ?? false, provider, model, max_tokens: maxTokens },
   });
+}
+
+export interface LlmSelection {
+  provider: string;
+  model: string;
+}
+
+export async function getLlmSelection(): Promise<LlmSelection> {
+  return invoke("get_llm_selection");
+}
+
+export async function setLlmSelection(provider: string, model: string): Promise<void> {
+  return invoke("set_llm_selection", { provider, model });
+}
+
+export async function listLlmModels(provider: string): Promise<LlmModelsResponse> {
+  return invoke("list_llm_models", { provider });
 }
 
 /** 当前客户端使用的服务端地址（用于排查是否连错服务器） */
