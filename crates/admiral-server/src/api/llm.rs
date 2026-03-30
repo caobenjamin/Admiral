@@ -14,7 +14,7 @@ use tracing::{info, warn};
 
 use crate::entities::entitlement;
 use crate::error::{AppError, Result};
-use crate::service::llm_router::default_model_for_provider;
+use crate::service::llm_router::{default_model_for_provider, protocol_for_provider, TokenLimitField};
 use crate::state::AppState;
 
 const DB_BODY_MAX: usize = 65535;
@@ -46,13 +46,13 @@ async fn ensure_active_entitlement(
 
 fn normalize_response_format(
     provider: &str,
-    model: &str,
+    _model: &str,
     response_format: Option<&serde_json::Value>,
 ) -> Option<serde_json::Value> {
     let response_format = response_format?.clone();
+    let protocol = protocol_for_provider(provider);
 
-    if provider == "deepseek"
-        && model == "deepseek-chat"
+    if !protocol.supports_json_schema_response_format
         && response_format
             .get("type")
             .and_then(|v| v.as_str())
@@ -71,16 +71,31 @@ fn resolve_model(req: &LlmChatRequest, provider: &str) -> String {
     }
 }
 
+fn apply_token_limit(
+    body_obj: &mut serde_json::map::Map<String, serde_json::Value>,
+    provider: &str,
+    max_tokens: u32,
+) {
+    match protocol_for_provider(provider).token_limit_field {
+        TokenLimitField::MaxCompletionTokens => {
+            body_obj.insert(
+                "max_completion_tokens".to_string(),
+                serde_json::json!(max_tokens),
+            );
+        }
+        TokenLimitField::MaxTokens => {
+            body_obj.insert("max_tokens".to_string(), serde_json::json!(max_tokens));
+        }
+    }
+}
+
 fn build_upstream_body(req: &LlmChatRequest, provider: &str) -> serde_json::Value {
     let model = resolve_model(req, provider);
     let mut body_obj = serde_json::map::Map::new();
     body_obj.insert("messages".to_string(), req.messages.clone());
     body_obj.insert("stream".to_string(), serde_json::json!(req.stream));
     body_obj.insert("model".to_string(), serde_json::json!(model));
-    body_obj.insert(
-        "max_tokens".to_string(),
-        serde_json::json!(req.max_tokens.unwrap_or(4096)),
-    );
+    apply_token_limit(&mut body_obj, provider, req.max_tokens.unwrap_or(4096));
     if let Some(ref t) = req.tools {
         body_obj.insert("tools".to_string(), t.clone());
     }
@@ -241,7 +256,7 @@ pub async fn list_models(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_upstream_body, normalize_response_format, resolve_model};
+    use super::{apply_token_limit, build_upstream_body, normalize_response_format, resolve_model};
     use admiral_types::api::LlmChatRequest;
     use serde_json::json;
 
@@ -271,6 +286,18 @@ mod tests {
         let normalized = normalize_response_format("openai", "gpt-4.1", Some(&response_format));
 
         assert_eq!(normalized, Some(response_format));
+    }
+
+    #[test]
+    fn downgrades_json_schema_for_deepseek_reasoner_too() {
+        let response_format = json!({
+            "type": "json_schema",
+            "json_schema": { "name": "agent_action", "schema": { "type": "object" } }
+        });
+
+        let normalized = normalize_response_format("deepseek", "deepseek-reasoner", Some(&response_format));
+
+        assert_eq!(normalized, Some(json!({ "type": "json_object" })));
     }
 
     #[test]
@@ -312,6 +339,28 @@ mod tests {
         let body = build_upstream_body(&req, "openai");
 
         assert_eq!(body["model"], json!("gpt-4.1"));
+        assert_eq!(body["max_completion_tokens"], json!(4096));
+        assert!(body.get("max_tokens").is_none());
         assert_eq!(body["response_format"]["type"], json!("json_schema"));
+    }
+
+    #[test]
+    fn apply_token_limit_uses_openai_field_name() {
+        let mut body = serde_json::Map::new();
+
+        apply_token_limit(&mut body, "openai", 1024);
+
+        assert_eq!(body.get("max_completion_tokens"), Some(&json!(1024)));
+        assert!(body.get("max_tokens").is_none());
+    }
+
+    #[test]
+    fn apply_token_limit_keeps_legacy_field_for_deepseek() {
+        let mut body = serde_json::Map::new();
+
+        apply_token_limit(&mut body, "deepseek", 1024);
+
+        assert_eq!(body.get("max_tokens"), Some(&json!(1024)));
+        assert!(body.get("max_completion_tokens").is_none());
     }
 }

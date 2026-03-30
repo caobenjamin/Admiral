@@ -13,6 +13,18 @@ const BODY_LOG_LIMIT: usize = 2048;
 const DEEPSEEK_PROVIDER: &str = "deepseek";
 const OPENAI_PROVIDER: &str = "openai";
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TokenLimitField {
+    MaxTokens,
+    MaxCompletionTokens,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ProviderProtocol {
+    pub token_limit_field: TokenLimitField,
+    pub supports_json_schema_response_format: bool,
+}
+
 fn body_preview(v: &Value, limit: usize) -> String {
     match serde_json::to_string(v) {
         Ok(s) => {
@@ -46,6 +58,10 @@ impl LlmProviderClient {
             provider: provider.to_string(),
             http: Client::new(),
         }
+    }
+
+    pub fn protocol(&self) -> ProviderProtocol {
+        protocol_for_provider(&self.provider)
     }
 
     pub async fn chat(&self, body: &Value) -> Result<Vec<u8>> {
@@ -211,6 +227,19 @@ pub fn default_model_for_provider(provider: &str) -> &'static str {
     }
 }
 
+pub fn protocol_for_provider(provider: &str) -> ProviderProtocol {
+    match provider {
+        OPENAI_PROVIDER => ProviderProtocol {
+            token_limit_field: TokenLimitField::MaxCompletionTokens,
+            supports_json_schema_response_format: true,
+        },
+        _ => ProviderProtocol {
+            token_limit_field: TokenLimitField::MaxTokens,
+            supports_json_schema_response_format: false,
+        },
+    }
+}
+
 pub fn from_env(
     default_provider: &str,
     deepseek_key: Option<&str>,
@@ -259,7 +288,10 @@ pub fn from_env(
 mod tests {
     use std::collections::HashMap;
 
-    use super::{default_model_for_provider, LlmProviderClient, LlmRouter};
+    use super::{
+        default_model_for_provider, protocol_for_provider, LlmProviderClient, LlmRouter,
+        TokenLimitField,
+    };
 
     #[test]
     fn default_model_matches_provider() {
@@ -283,5 +315,16 @@ mod tests {
         let resolved = router.resolve_provider(Some("openai")).unwrap();
 
         assert_eq!(resolved.provider, "openai");
+    }
+
+    #[test]
+    fn protocol_matches_current_openai_and_deepseek_docs() {
+        let openai = protocol_for_provider("openai");
+        let deepseek = protocol_for_provider("deepseek");
+
+        assert_eq!(openai.token_limit_field, TokenLimitField::MaxCompletionTokens);
+        assert!(openai.supports_json_schema_response_format);
+        assert_eq!(deepseek.token_limit_field, TokenLimitField::MaxTokens);
+        assert!(!deepseek.supports_json_schema_response_format);
     }
 }
