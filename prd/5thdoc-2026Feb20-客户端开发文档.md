@@ -217,7 +217,7 @@
 - 认证：`login`, `register`, `logout`, `me`, `license`
 - OAuth：`oauth_initiate`, `oauth_status`, `oauth_accounts_list`, `oauth_bind_accounts`, `oauth_delete_session`
 - MAPI：`mapi_proxy`
-- LLM：`llm_chat`（流式待接入）
+- LLM：`llm_responses`（流式待接入）
 - 任务：待 Phase 5 实现（本地 SQLite + 服务端同步）
 
 ---

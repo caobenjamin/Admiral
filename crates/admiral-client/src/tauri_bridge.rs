@@ -160,25 +160,6 @@ pub async fn mapi_proxy(
         .map_err(err_string)
 }
 
-// ---------- LLM ----------
-
-#[tauri::command]
-pub async fn llm_chat(
-    state: tauri::State<'_, AppState>,
-    mut req: LlmChatRequest,
-) -> Result<Vec<u8>, String> {
-    let config = ClientConfig::from_env();
-    if req.provider.as_deref().unwrap_or_default().is_empty() {
-        req.provider = Some(config.llm_provider.clone());
-    }
-    if req.model.as_deref().unwrap_or_default().is_empty() {
-        req.model = Some(config.llm_model.clone());
-    }
-    crate::commands::llm::llm_chat(&state.auth, req)
-        .await
-        .map_err(err_string)
-}
-
 #[tauri::command]
 pub async fn list_llm_models(
     state: tauri::State<'_, AppState>,

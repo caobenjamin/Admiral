@@ -4,8 +4,9 @@ use crate::agent::context::{ContextAssembler, Message, Session};
 use crate::agent::memory::MemoryStore;
 use crate::agent::profile;
 use crate::db;
+use crate::network::api_client::extract_text_from_llm_response;
 use crate::network::api_client::ApiClient;
-use admiral_types::api::LlmChatRequest;
+use admiral_types::api::LlmResponsesRequest;
 use admiral_types::skill::{SkillCall, SkillResult};
 use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
@@ -638,7 +639,7 @@ impl AgentRuntime {
 
             let messages = self.context.build(session, knowledge_snippets, runtime_notes);
             let llm_selection = crate::config::ClientConfig::from_env().llm_selection();
-            let req = LlmChatRequest {
+            let req = LlmResponsesRequest {
                 messages,
                 stream: false,
                 provider: Some(llm_selection.provider),
@@ -651,9 +652,9 @@ impl AgentRuntime {
 
             let raw_response = self
                 .api_client
-                .llm_chat(access_token, &req)
+                .llm_responses(access_token, &req)
                 .await
-                .map_err(|e| anyhow::anyhow!("llm_chat: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("llm_responses: {}", e))?;
             let content = match extract_assistant_content(&raw_response) {
                 Ok(content) => content,
                 Err(err) => {
@@ -783,11 +784,7 @@ fn parse_action(raw: &str) -> Result<AgentAction, ActionParseError> {
         });
     }
 
-    let value: Value = serde_json::from_str(unwrapped).map_err(|e| ActionParseError {
-        kind: ActionParseErrorKind::JsonParseFailed,
-        detail: format!("parse action json: {}", e),
-        raw_output: Some(unwrapped.to_string()),
-    })?;
+    let value = parse_action_json_value(unwrapped)?;
     let Some(obj) = value.as_object() else {
         return Err(ActionParseError {
             kind: ActionParseErrorKind::InvalidAction,
@@ -810,10 +807,25 @@ fn parse_action(raw: &str) -> Result<AgentAction, ActionParseError> {
             let arguments = obj
                 .get("arguments")
                 .ok_or_else(|| missing_field("arguments", unwrapped))?;
-            let Some(arguments_obj) = arguments.as_object() else {
+            let arguments_value = match arguments {
+                Value::Object(map) => Value::Object(map.clone()),
+                Value::String(raw_json) => serde_json::from_str::<Value>(raw_json).map_err(|e| ActionParseError {
+                    kind: ActionParseErrorKind::JsonParseFailed,
+                    detail: format!("parse `arguments` json string: {}", e),
+                    raw_output: Some(unwrapped.to_string()),
+                })?,
+                _ => {
+                    return Err(ActionParseError {
+                        kind: ActionParseErrorKind::InvalidAction,
+                        detail: "`arguments` must be a JSON object or a JSON string".to_string(),
+                        raw_output: Some(unwrapped.to_string()),
+                    })
+                }
+            };
+            let Some(arguments_obj) = arguments_value.as_object() else {
                 return Err(ActionParseError {
                     kind: ActionParseErrorKind::InvalidAction,
-                    detail: "`arguments` must be a JSON object".to_string(),
+                    detail: "`arguments` must decode to a JSON object".to_string(),
                     raw_output: Some(unwrapped.to_string()),
                 });
             };
@@ -841,52 +853,71 @@ fn parse_action(raw: &str) -> Result<AgentAction, ActionParseError> {
     }
 }
 
+fn parse_action_json_value(raw: &str) -> Result<Value, ActionParseError> {
+    let mut stream = serde_json::Deserializer::from_str(raw).into_iter::<Value>();
+    let first = match stream.next() {
+        Some(Ok(value)) => value,
+        Some(Err(e)) => {
+            return Err(ActionParseError {
+                kind: ActionParseErrorKind::JsonParseFailed,
+                detail: format!("parse action json: {}", e),
+                raw_output: Some(raw.to_string()),
+            });
+        }
+        None => {
+            return Err(ActionParseError {
+                kind: ActionParseErrorKind::EmptyResponse,
+                detail: "assistant content is empty".to_string(),
+                raw_output: Some(raw.to_string()),
+            });
+        }
+    };
+
+    let mut duplicate_count = 0usize;
+    for item in stream {
+        let value = item.map_err(|e| ActionParseError {
+            kind: ActionParseErrorKind::JsonParseFailed,
+            detail: format!("parse action json: {}", e),
+            raw_output: Some(raw.to_string()),
+        })?;
+        if value != first {
+            return Err(ActionParseError {
+                kind: ActionParseErrorKind::InvalidAction,
+                detail: "multiple JSON objects found in action output".to_string(),
+                raw_output: Some(raw.to_string()),
+            });
+        }
+        duplicate_count += 1;
+    }
+
+    if duplicate_count > 0 {
+        tracing::warn!(duplicate_count, "deduplicated repeated action JSON objects from model output");
+    }
+
+    Ok(first)
+}
+
 fn canonical_json(value: &Value) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string())
 }
 
 fn extract_assistant_content(raw_response: &[u8]) -> Result<String, ActionParseError> {
     let raw_text = String::from_utf8_lossy(raw_response).to_string();
-    let response: Value = serde_json::from_slice(raw_response).map_err(|e| ActionParseError {
+    let text = extract_text_from_llm_response(raw_response).map_err(|detail| ActionParseError {
         kind: ActionParseErrorKind::InvalidEnvelope,
-        detail: format!("parse llm response json: {}", e),
+        detail,
         raw_output: Some(raw_text.clone()),
     })?;
 
-    let Some(message) = response.pointer("/choices/0/message/content") else {
+    if text.trim().is_empty() {
         return Err(ActionParseError {
-            kind: ActionParseErrorKind::InvalidEnvelope,
-            detail: "missing `choices[0].message.content` in llm response".to_string(),
+            kind: ActionParseErrorKind::EmptyResponse,
+            detail: "assistant content is empty".to_string(),
             raw_output: Some(raw_text),
         });
-    };
-
-    match message {
-        Value::String(text) => Ok(text.to_string()),
-        Value::Array(items) => {
-            let text = items
-                .iter()
-                .filter_map(|item| match item {
-                    Value::Object(map) => map.get("text").and_then(|v| v.as_str()),
-                    _ => None,
-                })
-                .collect::<String>();
-            if text.trim().is_empty() {
-                Err(ActionParseError {
-                    kind: ActionParseErrorKind::EmptyResponse,
-                    detail: "assistant content array did not contain text".to_string(),
-                    raw_output: Some(raw_text),
-                })
-            } else {
-                Ok(text)
-            }
-        }
-        _ => Err(ActionParseError {
-            kind: ActionParseErrorKind::InvalidEnvelope,
-            detail: "`choices[0].message.content` must be string or text array".to_string(),
-            raw_output: Some(raw_text),
-        }),
     }
+
+    Ok(text)
 }
 
 fn required_string<'a>(
@@ -938,38 +969,20 @@ fn agent_action_response_format() -> Value {
                         "type": "string",
                         "enum": ["call_tool", "respond", "ask_user", "finish"]
                     },
-                    "tool_name": { "type": "string" },
-                    "arguments": { "type": "object", "additionalProperties": true },
-                    "reason": { "type": "string" },
-                    "message": { "type": "string" }
-                },
-                "required": ["type"],
-                "anyOf": [
-                    {
-                        "properties": {
-                            "type": { "const": "call_tool" }
-                        },
-                        "required": ["type", "tool_name", "arguments"]
+                    "tool_name": {
+                        "type": ["string", "null"]
                     },
-                    {
-                        "properties": {
-                            "type": { "const": "respond" }
-                        },
-                        "required": ["type", "message"]
+                    "arguments": {
+                        "type": ["object", "null"]
                     },
-                    {
-                        "properties": {
-                            "type": { "const": "ask_user" }
-                        },
-                        "required": ["type", "message"]
+                    "reason": {
+                        "type": ["string", "null"]
                     },
-                    {
-                        "properties": {
-                            "type": { "const": "finish" }
-                        },
-                        "required": ["type", "message"]
+                    "message": {
+                        "type": ["string", "null"]
                     }
-                ]
+                },
+                "required": ["type"]
             }
         }
     })
@@ -1122,5 +1135,61 @@ fn persist_run_event(run: &AgentRunState, event_type: &str, payload: Option<Valu
                 created_at: chrono::Utc::now().to_rfc3339(),
             },
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{agent_action_response_format, parse_action, ActionParseErrorKind};
+
+    #[test]
+    fn agent_action_schema_matches_openai_structured_output_constraints() {
+        let schema = agent_action_response_format();
+        let root = &schema["json_schema"]["schema"];
+
+        assert_eq!(
+            root["type"],
+            serde_json::json!("object")
+        );
+        assert_eq!(
+            root["required"],
+            serde_json::json!(["type"])
+        );
+        assert_eq!(
+            root["properties"]["reason"]["type"],
+            serde_json::json!(["string", "null"])
+        );
+        assert_eq!(
+            root["properties"]["arguments"]["type"],
+            serde_json::json!(["object", "null"])
+        );
+        assert!(root.get("anyOf").is_none());
+        assert!(root.get("oneOf").is_none());
+        assert!(root.get("allOf").is_none());
+    }
+
+    #[test]
+    fn parse_action_accepts_duplicate_identical_json_objects() {
+        let raw = concat!(
+            "{\"type\":\"ask_user\",\"message\":\"pick account\"}\n",
+            "{\"type\":\"ask_user\",\"message\":\"pick account\"}"
+        );
+
+        let action = parse_action(raw).expect("duplicate identical action should be accepted");
+
+        assert!(matches!(action, super::AgentAction::AskUser { message } if message == "pick account"));
+    }
+
+    #[test]
+    fn parse_action_rejects_multiple_different_json_objects() {
+        let raw = concat!(
+            "{\"type\":\"ask_user\",\"message\":\"pick account\"}\n",
+            "{\"type\":\"finish\",\"message\":\"done\"}"
+        );
+
+        let err = parse_action(raw).expect_err("different concatenated objects must be rejected");
+
+        assert!(matches!(err.kind, ActionParseErrorKind::InvalidAction));
+        assert!(err.detail.contains("multiple JSON objects"));
     }
 }

@@ -7,7 +7,6 @@ import { AdminPage } from "@/pages/AdminPage";
 import { PlatformAuth } from "@/components/settings/PlatformAuth";
 import { Preferences } from "@/components/settings/Preferences";
 import { MapiDebugPage } from "@/pages/MapiDebugPage";
-import { LlmChatPage } from "@/pages/LlmChatPage";
 import { TaskCreate } from "@/components/task/TaskCreate";
 
 const router = createBrowserRouter([
@@ -23,7 +22,6 @@ const router = createBrowserRouter([
       { path: "settings/platforms", element: <PlatformAuth /> },
       { path: "settings/preferences", element: <Preferences /> },
       { path: "settings/mapi", element: <MapiDebugPage /> },
-      { path: "settings/llm", element: <LlmChatPage /> },
       { path: "admin", element: <AdminPage /> },
     ],
   },
@@ -34,7 +32,6 @@ const SETTING_CARDS = [
   { to: "/settings/platforms", title: "平台授权", desc: "管理 B 站授权与账户绑定", tag: "OAuth" },
   { to: "/settings/preferences", title: "偏好", desc: "主题、语言与体验配置", tag: "Profile" },
   { to: "/settings/mapi", title: "MAPI", desc: "代理接口调试工具", tag: "Debug" },
-  { to: "/settings/llm", title: "LLM", desc: "模型对话联调工具", tag: "Debug" },
   { to: "/admin", title: "管理", desc: "管理员功能入口", tag: "Admin" },
 ];
 

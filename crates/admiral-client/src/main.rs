@@ -41,7 +41,6 @@ fn main() {
             tauri_bridge::oauth_delete_session,
             tauri_bridge::oauth_unbind_account,
             tauri_bridge::mapi_proxy,
-            tauri_bridge::llm_chat,
             tauri_bridge::list_llm_models,
             tauri_bridge::open_url,
             tauri_bridge::get_config_path,

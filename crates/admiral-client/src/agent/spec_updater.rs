@@ -3,10 +3,11 @@
 
 use crate::agent::memory::MemoryStore;
 use crate::network::api_client::ApiClient;
+use crate::network::api_client::extract_text_from_llm_response;
 use crate::task::completeness;
 use crate::task::engine::TaskEngine;
 use crate::task::spec::{self, TaskSpec, SpecStep, ChecklistItem};
-use admiral_types::api::LlmChatRequest;
+use admiral_types::api::LlmResponsesRequest;
 use admiral_types::task::{CompletenessLevel, TaskStatus};
 use serde_json::json;
 use std::sync::Arc;
@@ -64,7 +65,7 @@ pub async fn update_task_spec(
         conversation_snippet,
     );
 
-    let req = LlmChatRequest {
+    let req = LlmResponsesRequest {
         messages: json!([
             {"role": "system", "content": prompt}
         ]),
@@ -77,7 +78,7 @@ pub async fn update_task_spec(
         response_format: None,
     };
 
-    let bytes = match api_client.llm_chat(access_token, &req).await {
+    let bytes = match api_client.llm_responses(access_token, &req).await {
         Ok(b) => b,
         Err(e) => {
             tracing::debug!(error = %e, "spec updater LLM call failed");
@@ -85,18 +86,10 @@ pub async fn update_task_spec(
         }
     };
 
-    let resp: serde_json::Value = match serde_json::from_slice(&bytes) {
-        Ok(v) => v,
+    let text = match extract_text_from_llm_response(&bytes) {
+        Ok(text) => text,
         Err(_) => return,
     };
-
-    let text = resp
-        .get("choices")
-        .and_then(|c| c.get(0))
-        .and_then(|c| c.get("message"))
-        .and_then(|m| m.get("content"))
-        .and_then(|c| c.as_str())
-        .unwrap_or("");
 
     let clean = text
         .trim()

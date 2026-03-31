@@ -71,7 +71,7 @@ admiral/
 | GET | `/api/v1/oauth/bilibili/bindings` | 已绑定账户 |
 | POST | `/api/v1/oauth/bilibili/bind-accounts` | 绑定广告账户 |
 | POST | `/api/v1/mapi/proxy` | MAPI 代理转发 |
-| POST | `/api/v1/llm/chat` | LLM 对话代理 |
+| POST | `/api/v1/llm/responses` | LLM 对话代理 |
 | POST | `/api/v1/knowledge/query` | 知识库全文检索 |
 | POST | `/api/v1/admin/knowledge/ingest` | 知识库导入 |
 

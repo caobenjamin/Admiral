@@ -2,8 +2,8 @@
 //! to update the task-level or user-level memory files.
 
 use crate::agent::memory::MemoryStore;
-use crate::network::api_client::ApiClient;
-use admiral_types::api::LlmChatRequest;
+use crate::network::api_client::{extract_text_from_llm_response, ApiClient};
+use admiral_types::api::LlmResponsesRequest;
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -135,7 +135,7 @@ async fn call_llm_for_updates(
     prompt: &str,
 ) -> Vec<(String, String)> {
     let llm_selection = crate::config::ClientConfig::from_env().llm_selection();
-    let req = LlmChatRequest {
+    let req = LlmResponsesRequest {
         messages: json!([
             {"role": "system", "content": prompt}
         ]),
@@ -148,7 +148,7 @@ async fn call_llm_for_updates(
         response_format: None,
     };
 
-    let bytes = match api_client.llm_chat(access_token, &req).await {
+    let bytes = match api_client.llm_responses(access_token, &req).await {
         Ok(b) => b,
         Err(e) => {
             tracing::debug!(error = %e, "memory updater LLM call failed");
@@ -156,18 +156,10 @@ async fn call_llm_for_updates(
         }
     };
 
-    let resp: serde_json::Value = match serde_json::from_slice(&bytes) {
-        Ok(v) => v,
+    let text = match extract_text_from_llm_response(&bytes) {
+        Ok(text) => text,
         Err(_) => return Vec::new(),
     };
-
-    let text = resp
-        .get("choices")
-        .and_then(|c| c.get(0))
-        .and_then(|c| c.get("message"))
-        .and_then(|m| m.get("content"))
-        .and_then(|c| c.as_str())
-        .unwrap_or("");
 
     // Strip potential markdown code fences
     let clean = text

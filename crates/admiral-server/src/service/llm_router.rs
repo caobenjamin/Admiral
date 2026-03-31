@@ -64,8 +64,8 @@ impl LlmProviderClient {
         protocol_for_provider(&self.provider)
     }
 
-    pub async fn chat(&self, body: &Value) -> Result<Vec<u8>> {
-        let url = format!("{}/v1/chat/completions", self.base_url);
+    pub async fn create_response(&self, body: &Value) -> Result<Vec<u8>> {
+        let url = format!("{}/{}", self.base_url, generation_path_for_provider(&self.provider));
         info!(
             llm_url = %url,
             llm_provider = %self.provider,
@@ -95,8 +95,8 @@ impl LlmProviderClient {
         Ok(bytes.to_vec())
     }
 
-    pub async fn chat_stream(&self, body: &Value) -> Result<reqwest::Response> {
-        let url = format!("{}/v1/chat/completions", self.base_url);
+    pub async fn create_response_stream(&self, body: &Value) -> Result<reqwest::Response> {
+        let url = format!("{}/{}", self.base_url, generation_path_for_provider(&self.provider));
         info!(
             llm_url = %url,
             llm_provider = %self.provider,
@@ -179,6 +179,13 @@ impl LlmProviderClient {
             provider: self.provider.clone(),
             models,
         })
+    }
+}
+
+pub fn generation_path_for_provider(provider: &str) -> &'static str {
+    match provider {
+        OPENAI_PROVIDER => "v1/responses",
+        _ => "v1/chat/completions",
     }
 }
 

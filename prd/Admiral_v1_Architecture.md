@@ -1735,7 +1735,7 @@ CREATE INDEX idx_memory_category ON memory(category);
 
 | Method | Path | 说明 | 认证 |
 |--------|------|------|------|
-| POST | `/api/v1/llm/chat` | LLM 对话（SSE 流式） | JWT |
+| POST | `/api/v1/llm/responses` | LLM 对话（SSE 流式） | JWT |
 
 #### 日志同步
 

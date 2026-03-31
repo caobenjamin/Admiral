@@ -120,18 +120,6 @@ export async function mapiProxy(req: {
   return invoke("mapi_proxy", { req });
 }
 
-export async function llmChat(
-  messages: { role: string; content: string }[],
-  stream?: boolean,
-  provider?: string,
-  model?: string,
-  maxTokens?: number
-): Promise<number[]> {
-  return invoke("llm_chat", {
-    req: { messages, stream: stream ?? false, provider, model, max_tokens: maxTokens },
-  });
-}
-
 export interface LlmSelection {
   provider: string;
   model: string;

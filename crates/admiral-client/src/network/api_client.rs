@@ -3,6 +3,7 @@
 use admiral_types::api::*;
 use reqwest::Client;
 use serde::Deserialize;
+use serde_json::Value;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -305,12 +306,12 @@ impl ApiClient {
 
     // ---------- LLM ----------
 
-    pub async fn llm_chat(
+    pub async fn llm_responses(
         &self,
         access_token: &str,
-        req: &LlmChatRequest,
+        req: &LlmResponsesRequest,
     ) -> Result<Vec<u8>, ApiError> {
-        let path = "/api/v1/llm/chat";
+        let path = "/api/v1/llm/responses";
         let body = serde_json::to_value(req).map_err(|e| ApiError::Serialization(e.to_string()))?;
         let url = self.url(path);
         let resp = self
@@ -327,32 +328,6 @@ impl ApiClient {
         }
         let bytes = resp.bytes().await?.to_vec();
         Ok(bytes)
-    }
-
-    /// LLM chat streaming: returns the raw response for SSE processing.
-    pub async fn llm_chat_stream(
-        &self,
-        access_token: &str,
-        req: &LlmChatRequest,
-    ) -> Result<reqwest::Response, ApiError> {
-        let path = "/api/v1/llm/chat";
-        let mut stream_req = req.clone();
-        stream_req.stream = true;
-        let body = serde_json::to_value(&stream_req).map_err(|e| ApiError::Serialization(e.to_string()))?;
-        let url = self.url(path);
-        let resp = self
-            .client
-            .post(&url)
-            .timeout(Duration::from_secs(300))
-            .header("Authorization", format!("Bearer {}", access_token))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
-        if !resp.status().is_success() {
-            return Err(Self::parse_error_response(resp, "LLM_ERROR").await);
-        }
-        Ok(resp)
     }
 
     pub async fn llm_list_models(
@@ -384,6 +359,38 @@ impl ApiClient {
         let out: KnowledgeQueryResponse = resp.json().await?;
         Ok(out.snippets)
     }
+}
+
+pub fn extract_text_from_llm_response(raw_response: &[u8]) -> Result<String, String> {
+    let response: Value = serde_json::from_slice(raw_response)
+        .map_err(|e| format!("parse llm response json: {}", e))?;
+
+    if let Some(output_text) = response.get("output_text").and_then(|v| v.as_str()) {
+        if !output_text.trim().is_empty() {
+            return Ok(output_text.to_string());
+        }
+    }
+
+    if let Some(output) = response.get("output").and_then(|v| v.as_array()) {
+        let text = output
+            .iter()
+            .filter(|item| item.get("type").and_then(|v| v.as_str()) == Some("message"))
+            .flat_map(|item| item.get("content").and_then(|v| v.as_array()).into_iter().flatten())
+            .filter_map(|item| {
+                let item_type = item.get("type").and_then(|v| v.as_str());
+                match item_type {
+                    Some("output_text") | Some("text") => item.get("text").and_then(|v| v.as_str()),
+                    _ => None,
+                }
+            })
+            .collect::<String>();
+
+        if !text.trim().is_empty() {
+            return Ok(text);
+        }
+    }
+
+    Err("missing text in llm response `output`".to_string())
 }
 
 #[derive(serde::Deserialize)]

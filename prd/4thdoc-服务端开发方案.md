@@ -407,7 +407,7 @@ admiral-server/
 
 ### 7.3 接口设计
 
-- `POST /api/v1/llm/chat`  
+- `POST /api/v1/llm/responses`  
   - 请求体：至少包含「消息列表」和可选「模型覆盖」（若暂不实现路由，可忽略模型覆盖）。  
     示例：  
     `{ "messages": [ {"role": "user", "content": "..."}, ... ], "stream": true }`  
@@ -539,7 +539,7 @@ ADMIRAL_LOG_LEVEL=info
 
 1. 配置：default provider、各厂商 API Key（环境变量）。
 2. llm_proxy：根据配置选择厂商，使用 reqwest 调用对应 API（DeepSeek/OpenAI 兼容/Doubao/Gemini）；支持 stream 与 non-stream。
-3. api/llm：POST /api/v1/llm/chat，JWT 校验，转发到 llm_proxy，返回 SSE 或 JSON。
+3. api/llm：POST /api/v1/llm/responses，JWT 校验，转发到 llm_proxy，返回 SSE 或 JSON。
 4. （可选）admin API：GET/PUT 当前 default provider（若存在配置表或配置文件热加载）。
 
 ### 10.5 依赖关系

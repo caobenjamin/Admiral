@@ -35,7 +35,7 @@ pub fn app(state: AppState) -> Router {
         .nest("/api/v1/auth", auth_routes)
         .nest("/api/v1/oauth/bilibili", oauth_bilibili_routes)
         .route("/api/v1/mapi/proxy", axum::routing::post(mapi::proxy))
-        .route("/api/v1/llm/chat", axum::routing::post(llm::chat))
+        .route("/api/v1/llm/responses", axum::routing::post(llm::responses))
         .route("/api/v1/llm/models", get(llm::list_models))
         .route("/api/v1/knowledge/query", axum::routing::post(knowledge::query))
         .route("/api/v1/tasks/capabilities", get(task::capabilities))

@@ -132,7 +132,7 @@ pub struct MapiProxyRequest {
 // ---------- LLM ----------
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct LlmChatRequest {
+pub struct LlmResponsesRequest {
     pub messages: serde_json::Value,
     #[serde(default)]
     pub stream: bool,
