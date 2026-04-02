@@ -68,6 +68,31 @@ fn normalize_response_format(
     Some(response_format)
 }
 
+fn normalize_openai_text_format(response_format: &Value) -> Value {
+    let Some(obj) = response_format.as_object() else {
+        return response_format.clone();
+    };
+
+    if obj.get("type").and_then(|v| v.as_str()) != Some("json_schema") {
+        return response_format.clone();
+    }
+
+    let Some(json_schema) = obj.get("json_schema").and_then(|v| v.as_object()) else {
+        return response_format.clone();
+    };
+
+    let mut normalized = Map::new();
+    normalized.insert("type".to_string(), json!("json_schema"));
+
+    for field in ["name", "description", "strict", "schema"] {
+        if let Some(value) = json_schema.get(field) {
+            normalized.insert(field.to_string(), value.clone());
+        }
+    }
+
+    Value::Object(normalized)
+}
+
 fn resolve_model(req: &LlmResponsesRequest, provider: &str) -> String {
     match req.model.as_deref() {
         Some(model) if !model.trim().is_empty() && model != "fast" => model.to_string(),
@@ -236,7 +261,7 @@ fn build_openai_responses_body(req: &LlmResponsesRequest, model: &str) -> Value 
         body_obj.insert(
             "text".to_string(),
             json!({
-                "format": format,
+                "format": normalize_openai_text_format(&format),
             }),
         );
     }
@@ -459,7 +484,7 @@ pub async fn list_models(
 mod tests {
     use super::{
         apply_token_limit, build_upstream_body, normalize_openai_input,
-        normalize_response_format, resolve_model,
+        normalize_openai_text_format, normalize_response_format, resolve_model,
     };
     use admiral_types::api::LlmResponsesRequest;
     use serde_json::json;
@@ -490,6 +515,29 @@ mod tests {
         let normalized = normalize_response_format("openai", "gpt-4.1", Some(&response_format));
 
         assert_eq!(normalized, Some(response_format));
+    }
+
+    #[test]
+    fn normalize_openai_text_format_flattens_legacy_json_schema_shape() {
+        let response_format = json!({
+            "type": "json_schema",
+            "json_schema": {
+                "name": "agent_action",
+                "description": "Structured agent action",
+                "strict": true,
+                "schema": { "type": "object" }
+            }
+        });
+
+        let normalized = normalize_openai_text_format(&response_format);
+
+        assert_eq!(normalized, json!({
+            "type": "json_schema",
+            "name": "agent_action",
+            "description": "Structured agent action",
+            "strict": true,
+            "schema": { "type": "object" }
+        }));
     }
 
     #[test]
@@ -546,6 +594,60 @@ mod tests {
         assert_eq!(body["max_output_tokens"], json!(4096));
         assert!(body.get("input").is_some());
         assert_eq!(body["text"]["format"]["type"], json!("json_schema"));
+        assert_eq!(body["text"]["format"]["name"], json!("agent_action"));
+        assert_eq!(body["text"]["format"]["strict"], json!(true));
+        assert_eq!(body["text"]["format"]["schema"], json!({ "type": "object" }));
+        assert!(body["text"]["format"].get("json_schema").is_none());
+    }
+
+    #[test]
+    fn build_upstream_body_normalizes_openai_tools_and_tool_choice() {
+        let req = LlmResponsesRequest {
+            messages: json!([{ "role": "user", "content": "hi" }]),
+            stream: false,
+            provider: Some("openai".to_string()),
+            model: Some("gpt-4.1".to_string()),
+            max_tokens: Some(2048),
+            tools: Some(json!([{
+                "type": "function",
+                "function": {
+                    "name": "lookup",
+                    "description": "Find a record",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "string" }
+                        },
+                        "required": ["id"]
+                    }
+                }
+            }])),
+            tool_choice: Some(json!({
+                "type": "function",
+                "function": { "name": "lookup" }
+            })),
+            response_format: None,
+        };
+
+        let body = build_upstream_body(&req, "openai");
+
+        assert_eq!(body["tools"], json!([{
+            "type": "function",
+            "name": "lookup",
+            "description": "Find a record",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string" }
+                },
+                "required": ["id"]
+            },
+            "strict": true
+        }]));
+        assert_eq!(body["tool_choice"], json!({
+            "type": "function",
+            "name": "lookup"
+        }));
     }
 
     #[test]
