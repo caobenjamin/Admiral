@@ -176,13 +176,15 @@ impl ContextAssembler {
             "## Action Protocol\n\n\
             In every turn, respond with exactly one JSON object and nothing else.\n\
             Allowed actions:\n\
-            - {\"type\":\"call_tool\",\"tool_name\":\"exact_name\",\"arguments\":{...},\"reason\":\"short reason\"}\n\
-            - {\"type\":\"respond\",\"message\":\"final answer to user\"}\n\
-            - {\"type\":\"ask_user\",\"message\":\"specific question for missing info\"}\n\
-            - {\"type\":\"finish\",\"message\":\"final completion summary\"}\n\
+            - {\"type\":\"call_tool\",\"tool_name\":\"exact_name\",\"arguments\":\"{\\\"key\\\":\\\"value\\\"}\",\"reason\":\"short reason\",\"message\":null}\n\
+            - {\"type\":\"respond\",\"tool_name\":null,\"arguments\":null,\"reason\":null,\"message\":\"final answer to user\"}\n\
+            - {\"type\":\"ask_user\",\"tool_name\":null,\"arguments\":null,\"reason\":null,\"message\":\"specific question for missing info\"}\n\
+            - {\"type\":\"finish\",\"tool_name\":null,\"arguments\":null,\"reason\":null,\"message\":\"final completion summary\"}\n\
             Rules:\n\
             - Never output markdown fences.\n\
             - Never mix prose outside JSON.\n\
+            - Always include all five keys: `type`, `tool_name`, `arguments`, `reason`, `message`.\n\
+            - When using `call_tool`, `arguments` must be a JSON string whose decoded value is an object.\n\
             - If the task can be completed with tools, prefer `call_tool`.\n\
             - For multi-day report tasks, fetch one day per tool call and stop calling tools after all required dates are finished."
                 .to_string(),

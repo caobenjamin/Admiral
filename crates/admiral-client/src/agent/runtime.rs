@@ -973,7 +973,8 @@ fn agent_action_response_format() -> Value {
                         "type": ["string", "null"]
                     },
                     "arguments": {
-                        "type": ["object", "null"]
+                        "type": ["string", "null"],
+                        "description": "When type is call_tool, this must be a JSON string that decodes to the tool arguments object."
                     },
                     "reason": {
                         "type": ["string", "null"]
@@ -982,7 +983,7 @@ fn agent_action_response_format() -> Value {
                         "type": ["string", "null"]
                     }
                 },
-                "required": ["type"]
+                "required": ["type", "tool_name", "arguments", "reason", "message"]
             }
         }
     })
@@ -1153,7 +1154,7 @@ mod tests {
         );
         assert_eq!(
             root["required"],
-            serde_json::json!(["type"])
+            serde_json::json!(["type", "tool_name", "arguments", "reason", "message"])
         );
         assert_eq!(
             root["properties"]["reason"]["type"],
@@ -1161,11 +1162,33 @@ mod tests {
         );
         assert_eq!(
             root["properties"]["arguments"]["type"],
-            serde_json::json!(["object", "null"])
+            serde_json::json!(["string", "null"])
+        );
+        assert_eq!(
+            root["additionalProperties"],
+            serde_json::json!(false)
         );
         assert!(root.get("anyOf").is_none());
         assert!(root.get("oneOf").is_none());
         assert!(root.get("allOf").is_none());
+    }
+
+    #[test]
+    fn parse_action_accepts_stringified_tool_arguments() {
+        let raw = concat!(
+            "{\"type\":\"call_tool\",\"tool_name\":\"lookup\",\"arguments\":\"{\\\"id\\\":1}\",",
+            "\"reason\":\"need fresh data\",\"message\":null}"
+        );
+
+        let action = parse_action(raw).expect("stringified arguments should be accepted");
+
+        assert!(matches!(
+            action,
+            super::AgentAction::CallTool { tool_name, arguments, reason }
+            if tool_name == "lookup"
+                && arguments == serde_json::json!({"id": 1})
+                && reason.as_deref() == Some("need fresh data")
+        ));
     }
 
     #[test]
