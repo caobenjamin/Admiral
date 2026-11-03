@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+# Only documentation placeholders, never real credentials.
+[[allowlists]]
+description = "Explicit access-token placeholders"
+regexTarget = "secret"
+regexes = ['''^(YOUR_)+ACCESS_TOKEN$''']
