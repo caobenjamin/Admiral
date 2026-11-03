@@ -37,3 +37,16 @@ logs/
 *.so
 *.dylib
 tsconfig.tsbuildinfo
+
+# Secrets and local runtime state
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+**/credentials.json
+**/client.json
+*.sqlite
+*.sqlite3
+.security-audit/

@@ -582,7 +582,7 @@ curl -X POST 'https://cm.bilibili.com/takumi/api/open_api/oauth2/token' \
 
 ```bash
 curl -X GET 'https://cm.bilibili.com/takumi/api/open_api/oauth2/advertisers?page=1&size=100' \
-  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
+  -H 'Authorization: Bearer YOUR_YOUR_ACCESS_TOKEN'
 ```
 
 ---
